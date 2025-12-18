@@ -18,6 +18,7 @@ const Popup: React.FC = () => {
   const [recordingName, setRecordingName] = useState<string>('');
   const [recordingTimestamp, setRecordingTimestamp] = useState<Date>(new Date());
   const [currentRecordingId, setCurrentRecordingId] = useState<string | null>(null);
+  const [currentRecordingChannelMode, setCurrentRecordingChannelMode] = useState<'mono' | 'stereo' | undefined>(undefined);
   const [zoom, setZoom] = useState(1);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLooping, setIsLooping] = useState(false);
@@ -128,10 +129,10 @@ const Popup: React.FC = () => {
       // Small delay to ensure stream analysis is stopped
       setTimeout(async () => {
         try {
-          // Convert audio to current format preference for playback
+          // Use the recording's original channel mode if available, otherwise use current preference
           const format = preferences.format || 'webm';
           const sampleRate = preferences.sampleRate ? parseInt(preferences.sampleRate) : undefined;
-          const channelMode = preferences.channelMode || undefined;
+          const channelMode = currentRecordingChannelMode || preferences.channelMode || undefined;
           const targetChannels = channelMode === 'mono' ? 1 : channelMode === 'stereo' ? 2 : undefined;
           const convertedBlob = await convertAudioFormat(audioBlob, format, sampleRate, targetChannels);
           
@@ -185,7 +186,7 @@ const Popup: React.FC = () => {
         }
       }, 100);
     }
-  }, [audioBlob, isRecording, analyzeAudio, clearWaveform, preferences.format]);
+  }, [audioBlob, isRecording, analyzeAudio, clearWaveform, preferences.format, currentRecordingChannelMode]);
 
   const getTabTitle = async (): Promise<string | null> => {
     try {
@@ -252,6 +253,7 @@ const Popup: React.FC = () => {
       setIsPlaying(false);
       setCurrentPlayTime(0);
       setStartTime(0);
+      setCurrentRecordingChannelMode(undefined);
       
       // If useTabTitle is enabled, get the tab title and set it as the recording name
       if (preferences.useTabTitle) {
@@ -466,9 +468,11 @@ const Popup: React.FC = () => {
 
   const handleDownload = async () => {
     if (audioBlob) {
-      // Always use current format preference
+      // Use current format preference, but preserve original channel mode for playback
       const format = preferences.format || 'webm';
       const sampleRate = preferences.sampleRate ? parseInt(preferences.sampleRate) : undefined;
+      // For download, use current preference (user might want to convert)
+      // But for playback, we use the original channel mode
       const channelMode = preferences.channelMode || undefined;
       const targetChannels = channelMode === 'mono' ? 1 : channelMode === 'stereo' ? 2 : undefined;
       const extension = getFileExtension(format);
@@ -530,6 +534,7 @@ const Popup: React.FC = () => {
     setIsRecording(false);
     setRecordingDuration(0);
     setCurrentRecordingId(null);
+    setCurrentRecordingChannelMode(undefined);
     
     // Clear background recording state and ensure streams are released
     try {
@@ -643,7 +648,7 @@ const Popup: React.FC = () => {
               duration={displayDuration}
               onSeek={handleWaveformSeek}
               isRecording={isRecording}
-              channelMode={preferences.channelMode as 'mono' | 'stereo' | undefined}
+              channelMode={currentRecordingChannelMode || (preferences.channelMode as 'mono' | 'stereo' | undefined)}
               barColor={isLightMode ? '#ff9500' : '#ff9500'}
               backgroundColor={isLightMode ? '#f5f5f5' : '#2a2a2a'}
             />
@@ -694,8 +699,9 @@ const Popup: React.FC = () => {
               const nameWithoutExt = recording.name.replace(/\.[^/.]+$/, '');
               setRecordingName(nameWithoutExt);
               setRecordingTimestamp(new Date(recording.timestamp));
-              // Store the recording ID so we can update it if name is edited
+              // Store the recording ID and channel mode so we can use original settings
               setCurrentRecordingId(recording.id);
+              setCurrentRecordingChannelMode((recording.channelMode as 'mono' | 'stereo') || 'stereo');
               setActiveTab('recording');
             }}
             onDeleteRecording={handleDelete}
