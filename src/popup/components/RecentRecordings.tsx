@@ -117,7 +117,10 @@ export const RecentRecordings: React.FC<RecentRecordingsProps> = ({ onSelectReco
   if (loading) {
     return (
       <div className="recent-recordings">
-        <p>Loading...</p>
+        <div className="loading-container">
+          <div className="loading-spinner"></div>
+          <p className="loading-text">Loading recordings...</p>
+        </div>
       </div>
     );
   }
