@@ -209,6 +209,53 @@ export const Waveform: React.FC<WaveformProps> = ({
     };
   }, [currentTime, duration, width, data, zoom, backgroundColor, barColor, height]);
 
+  // Redraw waveform when colors change (theme change)
+  useEffect(() => {
+    if (data && canvasRef.current) {
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      // Apply zoom scale to canvas dimensions for visual scaling
+      const scale = zoom;
+      const scaledWidth = width * scale;
+      const scaledHeight = height * scale;
+      canvas.width = scaledWidth;
+      canvas.height = scaledHeight;
+
+      // Clear canvas with new background color
+      ctx.fillStyle = backgroundColor;
+      ctx.fillRect(0, 0, scaledWidth, scaledHeight);
+
+      // Redraw waveform bars with new colors
+      const barCount = Math.floor(data.length / zoom);
+      const barWidth = scaledWidth / barCount;
+      const maxBarHeight = scaledHeight * 0.8;
+
+      ctx.fillStyle = barColor;
+
+      for (let i = 0; i < barCount; i++) {
+        const dataIndex = Math.floor(i * zoom);
+        const value = data[dataIndex] || 0;
+        const barHeight = (value / 255) * maxBarHeight;
+        const x = i * barWidth;
+        const y = (scaledHeight - barHeight) / 2;
+
+        ctx.fillRect(x, y, Math.max(1, barWidth - 1), barHeight);
+      }
+
+      // Redraw position line if it exists
+      if (lastPositionRef.current >= 0 && duration > 0) {
+        ctx.strokeStyle = '#888';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(lastPositionRef.current, 0);
+        ctx.lineTo(lastPositionRef.current, scaledHeight);
+        ctx.stroke();
+      }
+    }
+  }, [backgroundColor, barColor, data, width, height, zoom, duration]);
+
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!onSeek || !duration || isRecording) return;
     
