@@ -95,7 +95,10 @@ const Popup: React.FC = () => {
     if (isRecording) {
       const now = new Date();
       setRecordingTimestamp(now);
-      setRecordingName(`recording ${formatDate(now)}`);
+      // Only set default name if useTabTitle is disabled or tab title couldn't be retrieved
+      if (!preferences.useTabTitle || !recordingName) {
+        setRecordingName(`recording ${formatDate(now)}`);
+      }
       setStartTime(0);
       setCurrentPlayTime(0);
     }
@@ -127,7 +130,10 @@ const Popup: React.FC = () => {
         try {
           // Convert audio to current format preference for playback
           const format = preferences.format || 'webm';
-          const convertedBlob = await convertAudioFormat(audioBlob, format);
+          const sampleRate = preferences.sampleRate ? parseInt(preferences.sampleRate) : undefined;
+          const channelMode = preferences.channelMode || undefined;
+          const targetChannels = channelMode === 'mono' ? 1 : channelMode === 'stereo' ? 2 : undefined;
+          const convertedBlob = await convertAudioFormat(audioBlob, format, sampleRate, targetChannels);
           
           // Analyze the full audio to show complete waveform
           await analyzeAudio(convertedBlob);
@@ -181,14 +187,43 @@ const Popup: React.FC = () => {
     }
   }, [audioBlob, isRecording, analyzeAudio, clearWaveform, preferences.format]);
 
+  const getTabTitle = async (): Promise<string | null> => {
+    try {
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tabs.length > 0 && tabs[0].title) {
+        return tabs[0].title;
+      }
+      return null;
+    } catch (error) {
+      console.error('Error getting tab title:', error);
+      return null;
+    }
+  };
+
   const handleRecordClick = async () => {
     if (isRecording) {
       const stoppedBlob = await stopRecording();
       // Save recording to Recent Recordings after stopping
       // Use the current recordingName (which may have been edited)
-      if (stoppedBlob) {
+      if (stoppedBlob && stoppedBlob.size > 0) {
+        console.log('Recording stopped, blob size:', stoppedBlob.size);
         const nameToSave = recordingName || `recording ${formatDate(new Date())}`;
-        await saveRecordingToHistory(stoppedBlob, nameToSave);
+        console.log('Saving recording with name:', nameToSave);
+        
+        try {
+          await saveRecordingToHistory(stoppedBlob, nameToSave);
+          console.log('Recording saved to history successfully!');
+        } catch (error: any) {
+          console.error('Error saving recording to history:', error);
+          const errorMessage = error?.message || 'Unknown error occurred';
+          alert(`Recording stopped but failed to save to recent recordings: ${errorMessage}`);
+        }
+      } else {
+        console.warn('No valid blob to save after stopping recording. Blob:', stoppedBlob);
+        if (stoppedBlob) {
+          console.warn('Blob exists but size is:', stoppedBlob.size);
+        }
+        alert('Recording stopped but no audio data was captured. Please try recording again.');
       }
     } else {
       // Clear previous recording state before starting new one
@@ -204,6 +239,21 @@ const Popup: React.FC = () => {
       setIsPlaying(false);
       setCurrentPlayTime(0);
       setStartTime(0);
+      
+      // If useTabTitle is enabled, get the tab title and set it as the recording name
+      if (preferences.useTabTitle) {
+        const tabTitle = await getTabTitle();
+        if (tabTitle) {
+          // Clean up the tab title (remove invalid filename characters)
+          const cleanedTitle = tabTitle.replace(/[<>:"/\\|?*]/g, '_').trim();
+          if (cleanedTitle) {
+            setRecordingName(cleanedTitle);
+          }
+        }
+      } else {
+        // Reset to default name format
+        setRecordingName(`recording ${formatDate(new Date())}`);
+      }
       
       try {
         await startRecording();
@@ -222,13 +272,19 @@ const Popup: React.FC = () => {
     }
   };
 
-  const saveRecordingToHistory = async (blob: Blob, name: string) => {
+  const saveRecordingToHistory = async (blob: Blob, name: string): Promise<void> => {
     try {
+      console.log('Starting to save recording to history, blob size:', blob.size);
       const format = preferences.format || 'webm';
+      const sampleRate = preferences.sampleRate ? parseInt(preferences.sampleRate) : undefined;
+      const channelMode = preferences.channelMode || undefined;
+      const targetChannels = channelMode === 'mono' ? 1 : channelMode === 'stereo' ? 2 : undefined;
       const extension = getFileExtension(format);
       
-      // Convert audio to the target format
-      const convertedBlob = await convertAudioFormat(blob, format);
+      // Convert audio to the target format with sample rate and channel mode
+      console.log('Converting audio format...');
+      const convertedBlob = await convertAudioFormat(blob, format, sampleRate, targetChannels);
+      console.log('Audio converted, converted blob size:', convertedBlob.size);
       
       // Update name with correct extension if needed
       let recordingName = name;
@@ -238,8 +294,10 @@ const Popup: React.FC = () => {
         recordingName = `${nameWithoutExt}.${extension}`;
       }
       
+      console.log('Converting blob to array buffer...');
       const arrayBuffer = await convertedBlob.arrayBuffer();
       const audioData = Array.from(new Uint8Array(arrayBuffer));
+      console.log('Array buffer converted, audio data length:', audioData.length);
       
       const recordingId = Date.now().toString();
       const recording = {
@@ -251,18 +309,48 @@ const Popup: React.FC = () => {
         format: format // Store current format preference
       };
       
+      console.log('Recording object created, ID:', recordingId, 'Duration:', recordingDuration);
+      
       // Store the current recording ID so we can update it later if name is edited
       setCurrentRecordingId(recordingId);
       
-      chrome.storage.local.get(['savedRecordings'], (result) => {
-        const savedRecordings = result.savedRecordings || [];
-        savedRecordings.unshift(recording); // Add to beginning
-        // Keep only last 50 recordings
-        const limitedRecordings = savedRecordings.slice(0, 50);
-        chrome.storage.local.set({ savedRecordings: limitedRecordings });
+      // Save recording to storage - ensure it's saved
+      return new Promise<void>((resolve, reject) => {
+        chrome.storage.local.get(['savedRecordings'], (result) => {
+          if (chrome.runtime.lastError) {
+            const error = new Error(chrome.runtime.lastError.message);
+            console.error('Error getting savedRecordings:', error);
+            reject(error);
+            return;
+          }
+          
+          try {
+            const savedRecordings = result.savedRecordings || [];
+            console.log('Current saved recordings count:', savedRecordings.length);
+            savedRecordings.unshift(recording); // Add to beginning
+            // Keep only last 50 recordings
+            const limitedRecordings = savedRecordings.slice(0, 50);
+            console.log('Saving', limitedRecordings.length, 'recordings to storage...');
+            
+            chrome.storage.local.set({ savedRecordings: limitedRecordings }, () => {
+              if (chrome.runtime.lastError) {
+                const error = new Error(chrome.runtime.lastError.message);
+                console.error('Error saving recording to storage:', error);
+                reject(error);
+              } else {
+                console.log('Recording saved to storage successfully! ID:', recordingId);
+                resolve();
+              }
+            });
+          } catch (error) {
+            console.error('Error processing recording save:', error);
+            reject(error);
+          }
+        });
       });
     } catch (error) {
       console.error('Failed to save recording:', error);
+      throw error; // Re-throw to be caught by caller
     }
   };
 
@@ -346,10 +434,13 @@ const Popup: React.FC = () => {
     if (audioBlob) {
       // Always use current format preference
       const format = preferences.format || 'webm';
+      const sampleRate = preferences.sampleRate ? parseInt(preferences.sampleRate) : undefined;
+      const channelMode = preferences.channelMode || undefined;
+      const targetChannels = channelMode === 'mono' ? 1 : channelMode === 'stereo' ? 2 : undefined;
       const extension = getFileExtension(format);
       
-      // Convert audio to the target format
-      const convertedBlob = await convertAudioFormat(audioBlob, format);
+      // Convert audio to the target format with sample rate and channel mode
+      const convertedBlob = await convertAudioFormat(audioBlob, format, sampleRate, targetChannels);
       
       // Remove any existing extension from recording name
       const nameWithoutExt = (recordingName || 'recording').replace(/\.[^/.]+$/, '');
@@ -436,7 +527,7 @@ const Popup: React.FC = () => {
   const displayStartTime = startTime;
 
   return (
-    <div className={`popup-container ${isLightMode ? 'light-mode' : ''}`}>
+    <div className={`popup-container ${isLightMode ? 'light-mode' : ''}`} style={{ position: 'relative' }}>
       <header className="header">
         <h1 className="app-title">Sample</h1>
         <div className="header-actions">
@@ -572,25 +663,23 @@ const Popup: React.FC = () => {
             }}
             onDeleteRecording={handleDelete}
           />
-          <div className="record-button-container">
-            <RecordButton
-              isRecording={isRecording}
-              onClick={handleRecordClick}
-            />
-          </div>
         </div>
       )}
 
       {activeTab === 'preferences' && (
         <div className="preferences-wrapper">
           <Preferences />
-          <div className="record-button-container">
-            <RecordButton
-              isRecording={isRecording}
-              onClick={handleRecordClick}
-            />
-          </div>
         </div>
+      )}
+
+      {activeTab !== 'recent' && (
+        <button 
+          className="buy-coffee-button"
+          onClick={() => alert('In development')}
+          title="Buy us a coffee"
+        >
+          ☕ Buy us a coffee
+        </button>
       )}
     </div>
   );

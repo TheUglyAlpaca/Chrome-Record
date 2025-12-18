@@ -48,21 +48,26 @@ export const Preferences: React.FC<PreferencesProps> = ({ onClose }) => {
     
     // Update all saved recordings to use the new format
     // Convert the audio data to the new format
-    chrome.storage.local.get(['savedRecordings'], async (result) => {
-      const savedRecordings = result.savedRecordings || [];
+    chrome.storage.local.get(['savedRecordings', 'preferences'], async (prefsResult) => {
+      const savedRecordings = prefsResult.savedRecordings || [];
       if (savedRecordings.length > 0) {
         // Import converter dynamically to avoid circular dependencies
         const { convertAudioFormat } = await import('../utils/audioConverter');
         
-        // Convert all recordings to the new format
+        // Get current sample rate and channel mode preferences
+        const currentSampleRate = prefsResult.preferences?.sampleRate ? parseInt(prefsResult.preferences.sampleRate) : undefined;
+        const currentChannelMode = prefsResult.preferences?.channelMode || undefined;
+        const targetChannels = currentChannelMode === 'mono' ? 1 : currentChannelMode === 'stereo' ? 2 : undefined;
+        
+        // Convert all recordings to the new format with current sample rate and channel mode
         const updatedRecordings = await Promise.all(
           savedRecordings.map(async (recording: any) => {
             // Reconstruct blob from stored audio data
             const audioArray = new Uint8Array(recording.audioData);
             const originalBlob = new Blob([audioArray], { type: 'audio/webm' });
             
-            // Convert to new format
-            const convertedBlob = await convertAudioFormat(originalBlob, newFormat);
+            // Convert to new format with sample rate and channel mode
+            const convertedBlob = await convertAudioFormat(originalBlob, newFormat, currentSampleRate, targetChannels);
             const convertedArrayBuffer = await convertedBlob.arrayBuffer();
             const convertedAudioData = Array.from(new Uint8Array(convertedArrayBuffer));
             
@@ -86,16 +91,73 @@ export const Preferences: React.FC<PreferencesProps> = ({ onClose }) => {
     });
   };
 
-  const handleSampleRateChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  const handleSampleRateChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newSampleRate = e.target.value;
     setSampleRate(newSampleRate);
     savePreferences(undefined, newSampleRate);
+    
+    // Update all saved recordings to use the new sample rate
+    chrome.storage.local.get(['savedRecordings', 'preferences'], async (prefsResult) => {
+      const savedRecordings = prefsResult.savedRecordings || [];
+      if (savedRecordings.length > 0) {
+        const { convertAudioFormat } = await import('../utils/audioConverter');
+        const format = prefsResult.preferences?.format || 'webm';
+        const channelMode = prefsResult.preferences?.channelMode || undefined;
+        const targetChannels = channelMode === 'mono' ? 1 : channelMode === 'stereo' ? 2 : undefined;
+        const targetSampleRate = parseInt(newSampleRate);
+        
+        const updatedRecordings = await Promise.all(
+          savedRecordings.map(async (recording: any) => {
+            const audioArray = new Uint8Array(recording.audioData);
+            const originalBlob = new Blob([audioArray], { type: 'audio/webm' });
+            const convertedBlob = await convertAudioFormat(originalBlob, format, targetSampleRate, targetChannels);
+            const convertedArrayBuffer = await convertedBlob.arrayBuffer();
+            const convertedAudioData = Array.from(new Uint8Array(convertedArrayBuffer));
+            
+            return {
+              ...recording,
+              audioData: convertedAudioData
+            };
+          })
+        );
+        
+        chrome.storage.local.set({ savedRecordings: updatedRecordings });
+      }
+    });
   };
 
-  const handleChannelModeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  const handleChannelModeChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newChannelMode = e.target.value;
     setChannelMode(newChannelMode);
     savePreferences(undefined, undefined, newChannelMode);
+    
+    // Update all saved recordings to use the new channel mode
+    chrome.storage.local.get(['savedRecordings', 'preferences'], async (prefsResult) => {
+      const savedRecordings = prefsResult.savedRecordings || [];
+      if (savedRecordings.length > 0) {
+        const { convertAudioFormat } = await import('../utils/audioConverter');
+        const format = prefsResult.preferences?.format || 'webm';
+        const sampleRate = prefsResult.preferences?.sampleRate ? parseInt(prefsResult.preferences.sampleRate) : undefined;
+        const targetChannels = newChannelMode === 'mono' ? 1 : newChannelMode === 'stereo' ? 2 : undefined;
+        
+        const updatedRecordings = await Promise.all(
+          savedRecordings.map(async (recording: any) => {
+            const audioArray = new Uint8Array(recording.audioData);
+            const originalBlob = new Blob([audioArray], { type: 'audio/webm' });
+            const convertedBlob = await convertAudioFormat(originalBlob, format, sampleRate, targetChannels);
+            const convertedArrayBuffer = await convertedBlob.arrayBuffer();
+            const convertedAudioData = Array.from(new Uint8Array(convertedArrayBuffer));
+            
+            return {
+              ...recording,
+              audioData: convertedAudioData
+            };
+          })
+        );
+        
+        chrome.storage.local.set({ savedRecordings: updatedRecordings });
+      }
+    });
   };
 
   const handleUseTabTitleToggle = (e: React.ChangeEvent<HTMLInputElement>) => {

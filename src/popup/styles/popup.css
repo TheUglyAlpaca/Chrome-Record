@@ -621,6 +621,35 @@ body.light-mode,
   background-color: #f0f0f0;
 }
 
+/* Buy us a coffee button */
+.buy-coffee-button {
+  position: fixed;
+  bottom: 8px;
+  right: 12px;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 11px;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  cursor: pointer;
+  padding: 4px 8px;
+  transition: color 0.2s ease;
+  z-index: 1000;
+  pointer-events: auto;
+}
+
+.buy-coffee-button:hover {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.light-mode .buy-coffee-button {
+  color: rgba(0, 0, 0, 0.5);
+}
+
+.light-mode .buy-coffee-button:hover {
+  color: rgba(0, 0, 0, 0.8);
+}
+
 .light-mode .control-button.active {
   background-color: #e0e0e0;
 }

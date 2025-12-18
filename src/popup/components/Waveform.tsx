@@ -41,19 +41,23 @@ export const Waveform: React.FC<WaveformProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    canvas.width = width;
-    canvas.height = height;
+    // Apply zoom scale to canvas dimensions for visual scaling
+    const scale = zoom;
+    const scaledWidth = width * scale;
+    const scaledHeight = height * scale;
+    canvas.width = scaledWidth;
+    canvas.height = scaledHeight;
 
     // Clear canvas
     ctx.fillStyle = backgroundColor;
-    ctx.fillRect(0, 0, width, height);
+    ctx.fillRect(0, 0, scaledWidth, scaledHeight);
 
     // Draw waveform bars
-    // Zoom in (zoom > 1): shows fewer bars (more detail per bar)
-    // Zoom out (zoom < 1): shows more bars (less detail, see more of waveform)
+    // Zoom in (zoom > 1): shows fewer bars (more detail per bar) and larger size
+    // Zoom out (zoom < 1): shows more bars (less detail, see more of waveform) and smaller size
     const barCount = Math.floor(data.length / zoom);
-    const barWidth = width / barCount;
-    const maxBarHeight = height * 0.8;
+    const barWidth = scaledWidth / barCount;
+    const maxBarHeight = scaledHeight * 0.8;
 
     ctx.fillStyle = barColor;
 
@@ -62,7 +66,7 @@ export const Waveform: React.FC<WaveformProps> = ({
       const value = data[dataIndex] || 0;
       const barHeight = (value / 255) * maxBarHeight;
       const x = i * barWidth;
-      const y = (height - barHeight) / 2;
+      const y = (scaledHeight - barHeight) / 2;
 
       ctx.fillRect(x, y, Math.max(1, barWidth - 1), barHeight);
     }
@@ -95,9 +99,14 @@ export const Waveform: React.FC<WaveformProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // Calculate scale once for this effect
+    const scale = zoom;
+    const scaledWidth = width * scale;
+    const scaledHeight = height * scale;
+
     // Initialize position immediately if not set
     if (lastPositionRef.current < 0) {
-      const initialPosition = (currentTime / duration) * width;
+      const initialPosition = (currentTime / duration) * scaledWidth;
       lastPositionRef.current = initialPosition;
       lastKnownTimeRef.current = currentTime;
       lastUpdateTimeRef.current = Date.now();
@@ -110,8 +119,8 @@ export const Waveform: React.FC<WaveformProps> = ({
 
       const now = Date.now();
       
-      // Calculate target position based on current time
-      const targetPosition = (currentTime / duration) * width;
+      // Calculate target position based on current time (on scaled canvas)
+      const targetPosition = (currentTime / duration) * scaledWidth;
       
       // Check if currentTime has changed significantly (new update from audio)
       if (Math.abs(currentTime - lastKnownTimeRef.current) > 0.01) {
@@ -138,8 +147,8 @@ export const Waveform: React.FC<WaveformProps> = ({
       
       // Redraw the waveform area around the position line for smooth updates
       const barCount = Math.floor(data.length / zoom);
-      const barWidth = width / barCount;
-      const maxBarHeight = height * 0.8;
+      const barWidth = scaledWidth / barCount;
+      const maxBarHeight = scaledHeight * 0.8;
       
       // Clear area around old position
       if (lastPositionRef.current >= 0) {
@@ -149,7 +158,7 @@ export const Waveform: React.FC<WaveformProps> = ({
           Math.max(0, lastPositionRef.current - clearWidth / 2),
           0,
           clearWidth,
-          height
+          scaledHeight
         );
         // Redraw bars in cleared area
         ctx.fillStyle = barColor;
@@ -160,7 +169,7 @@ export const Waveform: React.FC<WaveformProps> = ({
           const value = data[dataIndex] || 0;
           const barHeight = (value / 255) * maxBarHeight;
           const x = i * barWidth;
-          const y = (height - barHeight) / 2;
+          const y = (scaledHeight - barHeight) / 2;
           ctx.fillRect(x, y, Math.max(1, barWidth - 1), barHeight);
         }
       }
@@ -170,7 +179,7 @@ export const Waveform: React.FC<WaveformProps> = ({
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(position, 0);
-      ctx.lineTo(position, height);
+      ctx.lineTo(position, scaledHeight);
       ctx.stroke();
       
       lastPositionRef.current = position;
@@ -198,12 +207,22 @@ export const Waveform: React.FC<WaveformProps> = ({
     
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
-    const percentage = x / rect.width;
+    // Adjust click position for zoom scale
+    const scale = zoom;
+    const containerCenterX = rect.width / 2;
+    const clickOffsetFromCenter = x - containerCenterX;
+    const scaledOffset = clickOffsetFromCenter / scale;
+    const adjustedX = containerCenterX + scaledOffset;
+    const percentage = Math.max(0, Math.min(1, adjustedX / rect.width));
     const seekTime = percentage * duration;
     
     onSeek(Math.max(0, Math.min(seekTime, duration)));
   };
 
+  // Calculate scale based on zoom for visual scaling
+  // zoom > 1 means zoom in (make larger), zoom < 1 means zoom out (make smaller)
+  const scale = zoom;
+  
   return (
     <div 
       ref={containerRef}
@@ -212,17 +231,31 @@ export const Waveform: React.FC<WaveformProps> = ({
         width: '100%',
         height: '100%',
         cursor: onSeek && !isRecording && duration > 0 ? 'pointer' : 'default',
-        position: 'relative'
+        position: 'relative',
+        overflow: 'hidden',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
       }}
     >
-      <canvas
-        ref={canvasRef}
+      <div
         style={{
-          width: '100%',
-          height: '100%',
-          display: 'block'
+          transform: `scale(${scale})`,
+          transformOrigin: 'center center',
+          width: `${100 / scale}%`,
+          height: `${100 / scale}%`,
+          position: 'relative'
         }}
-      />
+      >
+        <canvas
+          ref={canvasRef}
+          style={{
+            width: '100%',
+            height: '100%',
+            display: 'block'
+          }}
+        />
+      </div>
     </div>
   );
 };

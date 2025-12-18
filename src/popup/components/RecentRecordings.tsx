@@ -63,12 +63,15 @@ export const RecentRecordings: React.FC<RecentRecordingsProps> = ({ onSelectReco
     // This ensures all downloads use the current format setting
     const result = await chrome.storage.local.get(['preferences']);
     const format = result.preferences?.format || 'webm';
+    const sampleRate = result.preferences?.sampleRate ? parseInt(result.preferences.sampleRate) : undefined;
+    const channelMode = result.preferences?.channelMode || undefined;
+    const targetChannels = channelMode === 'mono' ? 1 : channelMode === 'stereo' ? 2 : undefined;
     
     const audioArray = new Uint8Array(recording.audioData);
     const originalBlob = new Blob([audioArray], { type: 'audio/webm' });
     
-    // Convert audio to the target format
-    const convertedBlob = await convertAudioFormat(originalBlob, format);
+    // Convert audio to the target format with sample rate and channel mode
+    const convertedBlob = await convertAudioFormat(originalBlob, format, sampleRate, targetChannels);
     
     // Get file extension based on current format preference
     const extension = getFileExtension(format);
