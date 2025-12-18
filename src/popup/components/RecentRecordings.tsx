@@ -141,20 +141,13 @@ export const RecentRecordings: React.FC<RecentRecordingsProps> = ({ onSelectReco
             <div className="recording-info" onClick={() => onSelectRecording(recording)}>
               <div className="recording-name-row">
                 <span className="recording-name">{recording.name.replace(/\.[^/.]+$/, '')}</span>
-                <div className="recording-channel-indicator" title={recording.channelMode === 'mono' ? 'Mono' : 'Stereo'}>
-                  {recording.channelMode === 'mono' ? (
-                    <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-                      <circle cx="6" cy="6" r="5" />
-                    </svg>
-                  ) : (
-                    <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor">
-                      <circle cx="4" cy="6" r="5" />
-                      <circle cx="12" cy="6" r="5" />
-                    </svg>
-                  )}
-                </div>
               </div>
-              <div className="recording-date-secondary">{formatDate(recording.timestamp)}</div>
+              <div className="recording-date-row">
+                <span className="recording-date-secondary">{formatDate(recording.timestamp)}</span>
+                <span className="recording-channel-text">
+                  ({(recording.channelMode || 'stereo').toUpperCase()})
+                </span>
+              </div>
             </div>
             <div className="recording-actions">
               <button 

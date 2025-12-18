@@ -397,6 +397,7 @@ body {
   align-items: center;
   gap: 8px;
   min-width: 0;
+  line-height: 1.2;
 }
 
 .recording-name {
@@ -410,17 +411,25 @@ body {
   min-width: 0;
 }
 
-.recording-channel-indicator {
+
+.recording-date-row {
   display: flex;
   align-items: center;
-  color: rgba(255, 255, 255, 0.5);
-  flex-shrink: 0;
+  gap: 6px;
 }
 
 .recording-date-secondary {
   font-size: 12px;
   color: #888;
   font-weight: 400;
+}
+
+.recording-channel-text {
+  font-size: 11px;
+  color: #888;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
 
 .recording-meta {
@@ -752,8 +761,8 @@ body.light-mode,
   background-color: #4ade80;
 }
 
-.light-mode .recording-channel-indicator {
-  color: rgba(0, 0, 0, 0.5);
+.light-mode .recording-channel-text {
+  color: #999;
 }
 
 .light-mode .recording-file-size {
