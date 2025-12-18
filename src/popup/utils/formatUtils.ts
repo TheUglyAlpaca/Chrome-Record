@@ -35,3 +35,4 @@ export function isFormatSupported(format: string): boolean {
   return MediaRecorder.isTypeSupported(mimeType);
 }
 
+

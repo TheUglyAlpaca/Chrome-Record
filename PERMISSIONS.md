@@ -71,3 +71,4 @@ Chrome may also ask for system-level permissions:
 3. Try disabling and re-enabling the extension
 4. Check if other extensions are interfering
 
+

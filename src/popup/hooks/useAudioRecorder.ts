@@ -89,25 +89,33 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
       const format = prefsResult.preferences?.format || 'webm';
       const mimeType = getMimeTypeForFormat(format);
       
-      // Ensure any previous recording is fully stopped first
+      // CRITICAL: First, ensure any previous recording is fully stopped and cleaned up
+      // This must happen before attempting to start a new recording
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track: MediaStreamTrack) => track.stop());
         streamRef.current = null;
       }
       
+      // Stop any active recording in background and clear all streams
+      try {
+        await chrome.runtime.sendMessage({ action: 'clearRecording' });
+      } catch (error) {
+        console.warn('Error clearing previous recording:', error);
+      }
+      
       // Wait longer to ensure previous stream is fully released
       // Chrome's tabCapture API needs time to fully release the stream
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, 800));
       
-      // Clear any previous recording state
-      await chrome.storage.local.remove(['recordingStreamId', 'recordingTabId', 'recordingStartTime']);
+      // Clear any previous recording state from storage
+      await chrome.storage.local.remove(['recordingStreamId', 'recordingTabId', 'recordingStartTime', 'recordingChunks']);
       
       // Double-check that storage is cleared
       const checkStorage = await chrome.storage.local.get(['recordingStreamId', 'recordingTabId']);
       if (checkStorage.recordingStreamId || checkStorage.recordingTabId) {
         // If still present, wait a bit more and clear again
-        await new Promise(resolve => setTimeout(resolve, 300));
-        await chrome.storage.local.remove(['recordingStreamId', 'recordingTabId', 'recordingStartTime']);
+        await new Promise(resolve => setTimeout(resolve, 500));
+        await chrome.storage.local.remove(['recordingStreamId', 'recordingTabId', 'recordingStartTime', 'recordingChunks']);
       }
       
       // Get current active tab
@@ -318,10 +326,11 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
         const tracks = streamRef.current.getTracks();
         tracks.forEach((track: MediaStreamTrack) => {
           track.stop();
+          console.log('Stopped track in stopRecording:', track.id, 'readyState:', track.readyState);
         });
         streamRef.current = null;
-        // Wait a moment for tracks to fully stop
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Wait longer for tracks to fully stop - critical for tabCapture API
+        await new Promise(resolve => setTimeout(resolve, 300));
       }
 
       if (durationIntervalRef.current) {

@@ -127,21 +127,36 @@ chrome.runtime.onMessage.addListener((message: Message, sender: chrome.runtime.M
   }
 
   if (message.action === 'clearRecording') {
+    console.log('clearRecording called - cleaning up all resources');
+    
     // Stop any active recording first
     if (mediaRecorder && isRecording) {
-      if (mediaRecorder.state === 'recording') {
-        mediaRecorder.stop();
+      if (mediaRecorder.state === 'recording' || mediaRecorder.state === 'paused') {
+        try {
+          mediaRecorder.stop();
+          console.log('Stopped MediaRecorder in clearRecording');
+        } catch (e) {
+          console.warn('Error stopping MediaRecorder:', e);
+        }
       }
       mediaRecorder = null;
       isRecording = false;
     }
     
-    // Clean up stream
+    // Clean up stream - CRITICAL: must stop all tracks to release the tab capture
     if (currentStream) {
       const tracks = currentStream.getTracks();
+      console.log(`Stopping ${tracks.length} tracks in clearRecording`);
       tracks.forEach((track: MediaStreamTrack) => {
         track.stop();
+        console.log('Stopped track:', track.id, 'readyState:', track.readyState);
       });
+      // Don't null immediately - let tracks fully stop
+      setTimeout(() => {
+        currentStream = null;
+        console.log('Stream set to null in clearRecording');
+      }, 100);
+    } else {
       currentStream = null;
     }
     
@@ -159,9 +174,11 @@ chrome.runtime.onMessage.addListener((message: Message, sender: chrome.runtime.M
       'recordingTabId',
       'recordingStartTime',
       'recordingChunks'
-    ]);
+    ], () => {
+      console.log('Storage cleared in clearRecording');
+      sendResponse({ success: true });
+    });
     
-    sendResponse({ success: true });
     return true;
   }
 
@@ -190,39 +207,55 @@ chrome.runtime.onMessage.addListener((message: Message, sender: chrome.runtime.M
 // Automatically capture audio from a specific tab (no picker, without muting)
 async function captureTabAudio(tabId: number): Promise<void> {
   return new Promise((resolve, reject) => {
-    // First, check if there's an existing stream for this tab and wait for it to be released
+    // First, ensure any existing stream is fully cleaned up
     // Chrome's tabCapture API requires that previous streams are fully released before capturing again
     
-    // Wait a bit to ensure any previous stream is fully released
+    // Wait longer to ensure any previous stream is fully released
+    // This is critical to prevent "Cannot capture a tab with an active stream" errors
     setTimeout(() => {
       chrome.tabCapture.getMediaStreamId(
         { targetTabId: tabId },
         (streamId: string | undefined) => {
           if (chrome.runtime.lastError) {
             const errorMsg = chrome.runtime.lastError.message;
-            // If error is about active stream, wait a bit more and retry
-            if (errorMsg && errorMsg.includes('active stream')) {
-              // Wait longer and retry once
-              setTimeout(() => {
-                chrome.tabCapture.getMediaStreamId(
-                  { targetTabId: tabId },
-                  (retryStreamId: string | undefined) => {
-                    if (chrome.runtime.lastError) {
-                      reject(new Error(chrome.runtime.lastError.message));
-                      return;
+            // If error is about active stream, wait longer and retry multiple times
+            if (errorMsg && (errorMsg.includes('active stream') || errorMsg.includes('Cannot capture'))) {
+              // Retry with increasing delays
+              let retryCount = 0;
+              const maxRetries = 3;
+              const retryDelay = 800; // Start with 800ms
+              
+              const retryCapture = () => {
+                setTimeout(() => {
+                  chrome.tabCapture.getMediaStreamId(
+                    { targetTabId: tabId },
+                    (retryStreamId: string | undefined) => {
+                      if (chrome.runtime.lastError) {
+                        const retryError = chrome.runtime.lastError.message;
+                        if (retryError && (retryError.includes('active stream') || retryError.includes('Cannot capture')) && retryCount < maxRetries) {
+                          retryCount++;
+                          console.log(`Retry ${retryCount}/${maxRetries} for tab capture after active stream error`);
+                          retryCapture();
+                          return;
+                        }
+                        reject(new Error(retryError));
+                        return;
+                      }
+                      if (!retryStreamId) {
+                        reject(new Error('Failed to get media stream ID'));
+                        return;
+                      }
+                      chrome.storage.local.set({ 
+                        recordingStreamId: retryStreamId,
+                        recordingTabId: tabId 
+                      });
+                      resolve();
                     }
-                    if (!retryStreamId) {
-                      reject(new Error('Failed to get media stream ID'));
-                      return;
-                    }
-                    chrome.storage.local.set({ 
-                      recordingStreamId: retryStreamId,
-                      recordingTabId: tabId 
-                    });
-                    resolve();
-                  }
-                );
-              }, 500);
+                  );
+                }, retryDelay * (retryCount + 1)); // Increase delay with each retry
+              };
+              
+              retryCapture();
               return;
             }
             reject(new Error(errorMsg));
@@ -243,7 +276,7 @@ async function captureTabAudio(tabId: number): Promise<void> {
           resolve();
         }
       );
-    }, 100); // Small delay to ensure previous stream is released
+    }, 300); // Increased delay to ensure previous stream is released
   });
 }
 
@@ -611,11 +644,14 @@ function processStopCapture(resolve: (blob: Blob | null) => void, originalOnStop
       const tracks = currentStream.getTracks();
       tracks.forEach((track: MediaStreamTrack) => {
         track.stop();
+        console.log('Stopped track:', track.id, 'readyState:', track.readyState);
       });
-      // Wait a moment for tracks to fully stop before nulling
+      // Wait longer for tracks to fully stop before nulling
+      // This ensures Chrome's tabCapture API fully releases the stream
       setTimeout(() => {
         currentStream = null;
-      }, 50);
+        console.log('Stream cleaned up and set to null');
+      }, 200); // Increased from 50ms to 200ms
     } else {
       currentStream = null;
     }
