@@ -124,53 +124,65 @@ export const Waveform: React.FC<WaveformProps> = ({
       // Calculate target position based on current time (on scaled canvas)
       const targetPosition = (currentTime / duration) * scaledWidth;
       
-      // Check if currentTime has changed significantly (new update from audio)
-      if (Math.abs(currentTime - lastKnownTimeRef.current) > 0.01) {
-        // New update received, update target but keep smooth interpolation
+      // Initialize position if needed
+      if (lastPositionRef.current < 0) {
+        lastPositionRef.current = targetPosition;
         lastKnownTimeRef.current = currentTime;
         lastUpdateTimeRef.current = now;
       }
       
-      // Always interpolate smoothly between last drawn position and target position
-      const elapsed = now - lastUpdateTimeRef.current;
-      const interpolationDuration = 100; // ms to smooth over
-      const progress = Math.min(1, elapsed / interpolationDuration);
-      
-      // Use easing for smoother animation (ease-out)
-      const easedProgress = 1 - Math.pow(1 - progress, 3);
-      
-      // Ensure lastPosition is initialized
-      if (lastPositionRef.current < 0) {
-        lastPositionRef.current = targetPosition;
+      // Check if currentTime has changed significantly (new update from audio)
+      if (Math.abs(currentTime - lastKnownTimeRef.current) > 0.001) {
+        // New update received - smoothly interpolate to new position
+        lastKnownTimeRef.current = currentTime;
+        lastUpdateTimeRef.current = now;
       }
       
+      // Calculate time-based interpolation for ultra-smooth motion
+      // Since currentTime is now updated via requestAnimationFrame (60fps),
+      // we can use a very short interpolation window for responsiveness
+      const elapsed = now - lastUpdateTimeRef.current;
+      const interpolationDuration = 50; // ms - short window for responsiveness
+      const progress = Math.min(1, elapsed / interpolationDuration);
+      
+      // Use smooth easing (ease-out) for natural motion
+      const easedProgress = 1 - Math.pow(1 - progress, 2);
+      
+      // Interpolate smoothly to target position
       const position = lastPositionRef.current + 
         (targetPosition - lastPositionRef.current) * easedProgress;
       
-      // Redraw the waveform area around the position line for smooth updates
-      // Note: We need to use the current backgroundColor and barColor from props
-      // These are captured in the closure, so we need to access them from the component props
-      // For now, we'll use the refs or re-read from canvas context
+      // Store the previous drawn position BEFORE updating
+      const previousPosition = lastPositionRef.current;
+      
+      // If we're very close to target, snap to it to avoid tiny jitter
+      if (Math.abs(position - targetPosition) < 0.5) {
+        lastPositionRef.current = targetPosition;
+      } else {
+        lastPositionRef.current = position;
+      }
+      
+      // Get colors and dimensions
       const currentBgColor = backgroundColor;
       const currentBarColor = barColor;
       const barCount = Math.floor(data.length / zoom);
       const barWidth = scaledWidth / barCount;
       const maxBarHeight = scaledHeight * 0.8;
       
-      // Clear area around old position
-      if (lastPositionRef.current >= 0) {
-        const clearWidth = Math.max(3, barWidth * 3);
+      // Clear area around the PREVIOUS position (before we updated lastPositionRef)
+      if (previousPosition >= 0) {
+        // Clear a wider area to ensure we catch the entire line
+        const clearWidth = Math.max(4, barWidth * 4);
+        const clearStart = Math.max(0, previousPosition - clearWidth / 2);
+        const clearEnd = Math.min(scaledWidth, previousPosition + clearWidth / 2);
+        
         ctx.fillStyle = currentBgColor;
-        ctx.fillRect(
-          Math.max(0, lastPositionRef.current - clearWidth / 2),
-          0,
-          clearWidth,
-          scaledHeight
-        );
+        ctx.fillRect(clearStart, 0, clearEnd - clearStart, scaledHeight);
+        
         // Redraw bars in cleared area
         ctx.fillStyle = currentBarColor;
-        const startBar = Math.max(0, Math.floor((lastPositionRef.current - clearWidth / 2) / barWidth));
-        const endBar = Math.min(barCount, Math.ceil((lastPositionRef.current + clearWidth / 2) / barWidth));
+        const startBar = Math.max(0, Math.floor(clearStart / barWidth));
+        const endBar = Math.min(barCount, Math.ceil(clearEnd / barWidth));
         for (let i = startBar; i < endBar; i++) {
           const dataIndex = Math.floor(i * zoom);
           const value = data[dataIndex] || 0;
@@ -181,6 +193,26 @@ export const Waveform: React.FC<WaveformProps> = ({
         }
       }
       
+      // Also clear a small area around the new position to ensure clean drawing
+      const newClearWidth = 3;
+      const newClearStart = Math.max(0, position - newClearWidth / 2);
+      const newClearEnd = Math.min(scaledWidth, position + newClearWidth / 2);
+      ctx.fillStyle = currentBgColor;
+      ctx.fillRect(newClearStart, 0, newClearEnd - newClearStart, scaledHeight);
+      
+      // Redraw bars in the new position area
+      ctx.fillStyle = currentBarColor;
+      const newStartBar = Math.max(0, Math.floor(newClearStart / barWidth));
+      const newEndBar = Math.min(barCount, Math.ceil(newClearEnd / barWidth));
+      for (let i = newStartBar; i < newEndBar; i++) {
+        const dataIndex = Math.floor(i * zoom);
+        const value = data[dataIndex] || 0;
+        const barHeight = (value / 255) * maxBarHeight;
+        const x = i * barWidth;
+        const y = (scaledHeight - barHeight) / 2;
+        ctx.fillRect(x, y, Math.max(1, barWidth - 1), barHeight);
+      }
+      
       // Draw new position line with anti-aliasing
       ctx.strokeStyle = '#888';
       ctx.lineWidth = 1;
@@ -188,8 +220,6 @@ export const Waveform: React.FC<WaveformProps> = ({
       ctx.moveTo(position, 0);
       ctx.lineTo(position, scaledHeight);
       ctx.stroke();
-      
-      lastPositionRef.current = position;
       
       // Continue animation
       if (isActive && duration > 0) {

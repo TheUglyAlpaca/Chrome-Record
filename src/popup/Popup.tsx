@@ -34,6 +34,7 @@ const Popup: React.FC = () => {
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const playIntervalRef = useRef<number | null>(null);
+  const playheadAnimationFrameRef = useRef<number | null>(null);
 
   const {
     isRecording,
@@ -167,9 +168,8 @@ const Popup: React.FC = () => {
             setCurrentPlayTime(0);
           });
           
-          audio.addEventListener('timeupdate', () => {
-            setCurrentPlayTime(audio.currentTime);
-          });
+          // Don't use timeupdate event - it fires too infrequently (~250ms)
+          // We'll use requestAnimationFrame for smooth updates instead
           
           audio.addEventListener('error', (e) => {
             console.error('Audio playback error:', e);
@@ -390,6 +390,35 @@ const Popup: React.FC = () => {
     }
   };
 
+  // Smooth playhead update using requestAnimationFrame
+  useEffect(() => {
+    if (isPlaying && audioRef.current) {
+      const updatePlayhead = () => {
+        if (audioRef.current && isPlaying) {
+          const currentTime = audioRef.current.currentTime;
+          setCurrentPlayTime(currentTime);
+          playheadAnimationFrameRef.current = requestAnimationFrame(updatePlayhead);
+        }
+      };
+      
+      // Start the animation loop
+      playheadAnimationFrameRef.current = requestAnimationFrame(updatePlayhead);
+      
+      return () => {
+        if (playheadAnimationFrameRef.current) {
+          cancelAnimationFrame(playheadAnimationFrameRef.current);
+          playheadAnimationFrameRef.current = null;
+        }
+      };
+    } else {
+      // Stop animation when not playing
+      if (playheadAnimationFrameRef.current) {
+        cancelAnimationFrame(playheadAnimationFrameRef.current);
+        playheadAnimationFrameRef.current = null;
+      }
+    }
+  }, [isPlaying]);
+
   const handlePlay = async () => {
     if (audioRef.current) {
       try {
@@ -399,6 +428,10 @@ const Popup: React.FC = () => {
           if (playIntervalRef.current) {
             clearInterval(playIntervalRef.current);
             playIntervalRef.current = null;
+          }
+          if (playheadAnimationFrameRef.current) {
+            cancelAnimationFrame(playheadAnimationFrameRef.current);
+            playheadAnimationFrameRef.current = null;
           }
         } else {
           // Ensure audio is loaded
@@ -515,6 +548,12 @@ const Popup: React.FC = () => {
     if (playIntervalRef.current) {
       clearInterval(playIntervalRef.current);
       playIntervalRef.current = null;
+    }
+    
+    // Clear playhead animation frame if it exists
+    if (playheadAnimationFrameRef.current) {
+      cancelAnimationFrame(playheadAnimationFrameRef.current);
+      playheadAnimationFrameRef.current = null;
     }
     
     // Clear all state to go back to default view
