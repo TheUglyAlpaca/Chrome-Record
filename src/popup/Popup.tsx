@@ -13,6 +13,7 @@ import { RecordButton } from './components/RecordButton';
 import { RecentRecordings } from './components/RecentRecordings';
 import { Preferences } from './components/Preferences';
 import { SAMProcessor } from './components/SAMProcessor';
+import { BrainIcon } from './components/BrainIcon';
 import './styles/popup.css';
 
 const Popup: React.FC = () => {
@@ -67,15 +68,15 @@ const Popup: React.FC = () => {
         setIsLightMode(result.isLightMode);
         document.body.classList.toggle('light-mode', result.isLightMode);
       }
-      
+
       // Set preferences immediately
       if (result.preferences) {
         setPreferences(result.preferences);
       }
-      
+
       // Check recording state (non-blocking)
       checkRecordingState();
-      
+
       // Migrate in background (non-blocking, deferred)
       if (!result.migratedToIndexedDB) {
         // Defer migration to not block UI
@@ -92,7 +93,7 @@ const Popup: React.FC = () => {
         }, 100);
       }
     });
-    
+
     // Listen for preference changes
     const listener = (changes: { [key: string]: chrome.storage.StorageChange }) => {
       if (changes.preferences) {
@@ -104,7 +105,7 @@ const Popup: React.FC = () => {
       }
     };
     chrome.storage.onChanged.addListener(listener);
-    
+
     return () => {
       chrome.storage.onChanged.removeListener(listener);
     };
@@ -144,7 +145,7 @@ const Popup: React.FC = () => {
       console.log('Analyzing audio blob, size:', audioBlob.size);
       // Clear any existing waveform first
       clearWaveform();
-      
+
       // Small delay to ensure stream analysis is stopped
       setTimeout(async () => {
         try {
@@ -154,14 +155,14 @@ const Popup: React.FC = () => {
           const channelMode = currentRecordingChannelMode || preferences.channelMode || undefined;
           const targetChannels = channelMode === 'mono' ? 1 : channelMode === 'stereo' ? 2 : undefined;
           const convertedBlob = await convertAudioFormat(audioBlob, format, sampleRate, targetChannels);
-          
+
           // Analyze the full audio to show complete waveform
           await analyzeAudio(convertedBlob);
           console.log('Audio analysis complete, waveform should be visible');
-          
+
           // Create audio element for playback
           const audioUrl = URL.createObjectURL(convertedBlob);
-          
+
           // Clean up old audio URL if exists
           if (audioRef.current && audioRef.current.src) {
             const oldUrl = audioRef.current.src;
@@ -169,33 +170,33 @@ const Popup: React.FC = () => {
               URL.revokeObjectURL(oldUrl);
             }
           }
-          
+
           // Create new audio element
           const audio = new Audio(audioUrl);
           audioRef.current = audio;
-          
+
           // Set up event listeners
           audio.addEventListener('loadedmetadata', () => {
             // Audio is ready - immediately set current time to show playhead
             console.log('Audio loaded, duration:', audio.duration);
             setCurrentPlayTime(audio.currentTime || 0);
           });
-          
+
           audio.addEventListener('ended', () => {
             setIsPlaying(false);
             setCurrentPlayTime(0);
           });
-          
+
           // Don't use timeupdate event - it fires too infrequently (~250ms)
           // We'll use requestAnimationFrame for smooth updates instead
-          
+
           audio.addEventListener('error', (e) => {
             console.error('Audio playback error:', e);
           });
-          
+
           // Load the audio
           audio.load();
-          
+
           // Reset play time to 0 when new recording is loaded
           setCurrentPlayTime(0);
           setStartTime(0);
@@ -229,14 +230,14 @@ const Popup: React.FC = () => {
         console.log('Recording stopped, blob size:', stoppedBlob.size);
         const nameToSave = recordingName || `recording ${formatDate(new Date())}`;
         console.log('Saving recording with name:', nameToSave);
-        
+
         try {
           await saveRecordingToHistory(stoppedBlob, nameToSave);
           console.log('Recording saved to history successfully!');
         } catch (error: any) {
           console.error('Error saving recording to history:', error);
           const errorMessage = error?.message || 'Unknown error occurred';
-          
+
           // Provide user-friendly message for quota exceeded
           if (errorMessage.includes('quota') || errorMessage.includes('Quota')) {
             alert('Storage limit reached. The oldest recordings have been removed to make space. Your new recording has been saved.');
@@ -272,7 +273,7 @@ const Popup: React.FC = () => {
       setCurrentPlayTime(0);
       setStartTime(0);
       setCurrentRecordingChannelMode(undefined);
-      
+
       // If useTabTitle is enabled, get the tab title and set it as the recording name
       if (preferences.useTabTitle) {
         const tabTitle = await getTabTitle();
@@ -287,7 +288,7 @@ const Popup: React.FC = () => {
         // Reset to default name format
         setRecordingName(`recording ${formatDate(new Date())}`);
       }
-      
+
       try {
         await startRecording();
       } catch (error: any) {
@@ -313,12 +314,12 @@ const Popup: React.FC = () => {
       const channelMode = preferences.channelMode || undefined;
       const targetChannels = channelMode === 'mono' ? 1 : channelMode === 'stereo' ? 2 : undefined;
       const extension = getFileExtension(format);
-      
+
       // Convert audio to the target format with sample rate and channel mode
       console.log('Converting audio format...');
       const convertedBlob = await convertAudioFormat(blob, format, sampleRate, targetChannels);
       console.log('Audio converted, converted blob size:', convertedBlob.size);
-      
+
       // Update name with correct extension if needed
       let recordingName = name;
       if (!name.endsWith(`.${extension}`)) {
@@ -326,11 +327,11 @@ const Popup: React.FC = () => {
         const nameWithoutExt = name.replace(/\.[^/.]+$/, '');
         recordingName = `${nameWithoutExt}.${extension}`;
       }
-      
+
       console.log('Converting blob to array buffer...');
       const arrayBuffer = await convertedBlob.arrayBuffer();
       console.log('Array buffer converted, size:', arrayBuffer.byteLength);
-      
+
       const recordingId = Date.now().toString();
       const metadata = {
         id: recordingId,
@@ -340,12 +341,12 @@ const Popup: React.FC = () => {
         format: format, // Store current format preference
         channelMode: preferences.channelMode || 'stereo' // Store channel mode
       };
-      
+
       console.log('Recording metadata created, ID:', recordingId, 'Duration:', recordingDuration);
-      
+
       // Store the current recording ID so we can update it later if name is edited
       setCurrentRecordingId(recordingId);
-      
+
       // Save recording to IndexedDB (much larger capacity)
       try {
         await saveRecording(metadata, arrayBuffer);
@@ -370,10 +371,10 @@ const Popup: React.FC = () => {
           playheadAnimationFrameRef.current = requestAnimationFrame(updatePlayhead);
         }
       };
-      
+
       // Start the animation loop
       playheadAnimationFrameRef.current = requestAnimationFrame(updatePlayhead);
-      
+
       return () => {
         if (playheadAnimationFrameRef.current) {
           cancelAnimationFrame(playheadAnimationFrameRef.current);
@@ -408,16 +409,16 @@ const Popup: React.FC = () => {
           if (audioRef.current.readyState < 2) {
             audioRef.current.load();
           }
-          
+
           // Immediately update current time to show playhead before play starts
           setCurrentPlayTime(audioRef.current.currentTime || 0);
-          
+
           await audioRef.current.play();
           setIsPlaying(true);
-          
+
           // Update current time immediately after play starts
           setCurrentPlayTime(audioRef.current.currentTime || 0);
-          
+
           if (isLooping) {
             audioRef.current.loop = true;
           } else {
@@ -479,10 +480,10 @@ const Popup: React.FC = () => {
       const channelMode = preferences.channelMode || undefined;
       const targetChannels = channelMode === 'mono' ? 1 : channelMode === 'stereo' ? 2 : undefined;
       const extension = getFileExtension(format);
-      
+
       // Convert audio to the target format with sample rate and channel mode
       const convertedBlob = await convertAudioFormat(audioBlob, format, sampleRate, targetChannels);
-      
+
       // Remove any existing extension from recording name
       const nameWithoutExt = (recordingName || 'recording').replace(/\.[^/.]+$/, '');
       const filename = `${nameWithoutExt}.${extension}`;
@@ -499,10 +500,10 @@ const Popup: React.FC = () => {
         console.error('Error stopping recording during delete:', error);
       }
     }
-    
+
     // Wait a moment to ensure streams are fully released
     await new Promise(resolve => setTimeout(resolve, 300));
-    
+
     // Stop and clean up audio
     if (audioRef.current) {
       audioRef.current.pause();
@@ -513,29 +514,29 @@ const Popup: React.FC = () => {
       // Remove all event listeners by creating a new audio element
       audioRef.current = null;
     }
-    
+
     // Clear play interval if it exists
     if (playIntervalRef.current) {
       clearInterval(playIntervalRef.current);
       playIntervalRef.current = null;
     }
-    
+
     // Clear playhead animation frame if it exists
     if (playheadAnimationFrameRef.current) {
       cancelAnimationFrame(playheadAnimationFrameRef.current);
       playheadAnimationFrameRef.current = null;
     }
-    
+
     // Clear all state to go back to default view
     setIsPlaying(false);
     setIsLooping(false);
     setCurrentPlayTime(0);
     setStartTime(0);
     setZoom(1);
-    
+
     // Clear waveform data
     clearWaveform();
-    
+
     // Clear recording-related state
     setRecordingName('');
     setRecordingTimestamp(new Date());
@@ -544,7 +545,7 @@ const Popup: React.FC = () => {
     setRecordingDuration(0);
     setCurrentRecordingId(null);
     setCurrentRecordingChannelMode(undefined);
-    
+
     // Clear background recording state and ensure streams are released
     try {
       await chrome.runtime.sendMessage({ action: 'clearRecording' });
@@ -553,7 +554,7 @@ const Popup: React.FC = () => {
     } catch (error) {
       console.error('Failed to clear recording in background:', error);
     }
-    
+
     // Clear storage to ensure no stale stream IDs
     await chrome.storage.local.remove([
       'recordingStreamId',
@@ -663,7 +664,7 @@ const Popup: React.FC = () => {
               backgroundColor={isLightMode ? '#f5f5f5' : '#2a2a2a'}
             />
           </div>
-          
+
           {/* Show play controls only when not recording and have audio */}
           {!isRecording && audioBlob && (
             <div className="playback-info">
@@ -699,7 +700,7 @@ const Popup: React.FC = () => {
 
       {activeTab === 'recent' && (
         <div className="recent-recordings-wrapper">
-          <RecentRecordings 
+          <RecentRecordings
             onSelectRecording={(recording) => {
               // Load selected recording
               const audioArray = new Uint8Array(recording.audioData);
@@ -715,6 +716,20 @@ const Popup: React.FC = () => {
               setActiveTab('recording');
             }}
             onDeleteRecording={handleDelete}
+            onOpenAI={(recording) => {
+              // Load selected recording for AI
+              const audioArray = new Uint8Array(recording.audioData);
+              const blob = new Blob([audioArray], { type: 'audio/webm' });
+              setAudioBlob(blob);
+              // Set the name without extension for display
+              const nameWithoutExt = recording.name.replace(/\.[^/.]+$/, '');
+              setRecordingName(nameWithoutExt);
+              setRecordingTimestamp(new Date(recording.timestamp));
+              // Store the recording ID and channel mode so we can use original settings
+              setCurrentRecordingId(recording.id);
+              setCurrentRecordingChannelMode((recording.channelMode as 'mono' | 'stereo') || 'stereo');
+              setActiveTab('ai');
+            }}
           />
         </div>
       )}
@@ -775,7 +790,7 @@ const Popup: React.FC = () => {
       )}
 
       {activeTab !== 'recent' && activeTab !== 'ai' && (
-        <button 
+        <button
           className="buy-coffee-button"
           onClick={() => alert('In development')}
           title="Buy us a coffee"

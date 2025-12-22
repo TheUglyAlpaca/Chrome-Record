@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { BrainIcon } from './BrainIcon';
 import { convertAudioFormat } from '../utils/audioConverter';
 import { getFileExtension } from '../utils/formatUtils';
 import { getAllRecordingsMetadata, getRecording, deleteRecording, RecordingMetadata } from '../utils/storageManager';
@@ -10,9 +11,10 @@ interface Recording extends RecordingMetadata {
 interface RecentRecordingsProps {
   onSelectRecording: (recording: Recording) => void;
   onDeleteRecording?: () => void;
+  onOpenAI?: (recording: Recording) => void;
 }
 
-export const RecentRecordings: React.FC<RecentRecordingsProps> = ({ onSelectRecording, onDeleteRecording }) => {
+export const RecentRecordings: React.FC<RecentRecordingsProps> = ({ onSelectRecording, onDeleteRecording, onOpenAI }) => {
   const [recordings, setRecordings] = useState<Recording[]>([]);
   const [loading, setLoading] = useState(true);
   const [fileSizes, setFileSizes] = useState<{ [id: string]: number }>({});
@@ -267,6 +269,32 @@ export const RecentRecordings: React.FC<RecentRecordingsProps> = ({ onSelectReco
                   <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
                 </svg>
               </button>
+              {onOpenAI && (
+                <button 
+                  className="action-button" 
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    // Load full recording from IndexedDB when selected
+                    try {
+                      const fullRecording = await getRecording(recording.id);
+                      if (fullRecording) {
+                        // Convert ArrayBuffer to number array for compatibility
+                        const audioArray = new Uint8Array(fullRecording.audioData);
+                        const recordingWithAudio: Recording = {
+                          ...recording,
+                          audioData: Array.from(audioArray)
+                        };
+                        onOpenAI(recordingWithAudio);
+                      }
+                    } catch (error) {
+                      console.error('Error loading recording for AI:', error);
+                    }
+                  }}
+                  title="Process with AI"
+                >
+                  <BrainIcon width={16} height={16} />
+                </button>
+              )}
               <button 
                 className="action-button" 
                 onClick={(e) => {

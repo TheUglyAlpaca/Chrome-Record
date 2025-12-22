@@ -50,3 +50,4 @@ echo "1. Authenticate with Hugging Face: huggingface-cli login"
 echo "2. Request access to: https://huggingface.co/facebook/sam-audio-large"
 echo "3. Run the server: source venv/bin/activate && python server.py"
 
+
