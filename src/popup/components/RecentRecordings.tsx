@@ -172,7 +172,13 @@ export const RecentRecordings: React.FC<RecentRecordingsProps> = ({ onSelectReco
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleString();
+    return date.toLocaleString(undefined, {
+      month: 'numeric',
+      day: 'numeric',
+      year: '2-digit',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
   };
 
   const formatTime = (seconds: number) => {
