@@ -11,6 +11,7 @@ export const Preferences: React.FC<PreferencesProps> = ({ onClose }) => {
   const [sampleRate, setSampleRate] = useState<string>('44100');
   const [channelMode, setChannelMode] = useState<string>('stereo');
   const [bitDepth, setBitDepth] = useState<string>('16');
+  const [normalize, setNormalize] = useState<boolean>(false);
   const [useTabTitle, setUseTabTitle] = useState<boolean>(false);
 
   useEffect(() => {
@@ -22,6 +23,7 @@ export const Preferences: React.FC<PreferencesProps> = ({ onClose }) => {
         if (prefs.sampleRate) setSampleRate(prefs.sampleRate);
         if (prefs.channelMode) setChannelMode(prefs.channelMode);
         if (prefs.bitDepth) setBitDepth(prefs.bitDepth);
+        if (prefs.normalize !== undefined) setNormalize(prefs.normalize);
         if (prefs.useTabTitle !== undefined) setUseTabTitle(prefs.useTabTitle);
       }
     });
@@ -32,6 +34,7 @@ export const Preferences: React.FC<PreferencesProps> = ({ onClose }) => {
     newSampleRate?: string,
     newChannelMode?: string,
     newBitDepth?: string,
+    newNormalize?: boolean,
     newUseTabTitle?: boolean
   ) => {
     chrome.storage.local.set({
@@ -40,6 +43,7 @@ export const Preferences: React.FC<PreferencesProps> = ({ onClose }) => {
         sampleRate: newSampleRate !== undefined ? newSampleRate : sampleRate,
         channelMode: newChannelMode !== undefined ? newChannelMode : channelMode,
         bitDepth: newBitDepth !== undefined ? newBitDepth : bitDepth,
+        normalize: newNormalize !== undefined ? newNormalize : normalize,
         useTabTitle: newUseTabTitle !== undefined ? newUseTabTitle : useTabTitle
       }
     });
@@ -190,10 +194,16 @@ export const Preferences: React.FC<PreferencesProps> = ({ onClose }) => {
     savePreferences(undefined, undefined, undefined, newBitDepth);
   };
 
+  const handleNormalizeToggle = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newNormalize = e.target.checked;
+    setNormalize(newNormalize);
+    savePreferences(undefined, undefined, undefined, undefined, newNormalize);
+  };
+
   const handleUseTabTitleToggle = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newUseTabTitle = e.target.checked;
     setUseTabTitle(newUseTabTitle);
-    savePreferences(undefined, undefined, undefined, undefined, newUseTabTitle);
+    savePreferences(undefined, undefined, undefined, undefined, undefined, newUseTabTitle);
   };
 
   return (
@@ -252,6 +262,18 @@ export const Preferences: React.FC<PreferencesProps> = ({ onClose }) => {
       </div>
 
       <div className="preference-item">
+        <label className="preference-label">normalize audio</label>
+        <label className="toggle-switch">
+          <input
+            type="checkbox"
+            checked={normalize}
+            onChange={handleNormalizeToggle}
+          />
+          <span className="toggle-slider"></span>
+        </label>
+      </div>
+
+      <div className="preference-item">
         <label className="preference-label">use tab title as sample name</label>
         <label className="toggle-switch">
           <input
@@ -265,4 +287,3 @@ export const Preferences: React.FC<PreferencesProps> = ({ onClose }) => {
     </div>
   );
 };
-

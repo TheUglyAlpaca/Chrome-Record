@@ -87,6 +87,54 @@ function convertChannels(
 }
 
 /**
+ * Normalizes audio buffer to a target peak level (default -1 dB to avoid clipping)
+ */
+function normalizeAudioBuffer(
+  audioBuffer: AudioBuffer,
+  targetPeak: number = 0.95 // -1 dB approximately
+): AudioBuffer {
+  const numberOfChannels = audioBuffer.numberOfChannels;
+  const length = audioBuffer.length;
+  const sampleRate = audioBuffer.sampleRate;
+
+  // Find the maximum absolute value across all channels
+  let maxPeak = 0;
+  for (let channel = 0; channel < numberOfChannels; channel++) {
+    const channelData = audioBuffer.getChannelData(channel);
+    for (let i = 0; i < length; i++) {
+      const absSample = Math.abs(channelData[i]);
+      if (absSample > maxPeak) {
+        maxPeak = absSample;
+      }
+    }
+  }
+
+  // If audio is already silent or at target, return original
+  if (maxPeak === 0 || maxPeak === targetPeak) {
+    return audioBuffer;
+  }
+
+  // Calculate gain needed to reach target peak
+  const gain = targetPeak / maxPeak;
+
+  // Create new buffer with normalized audio
+  const audioContext = new AudioContext();
+  const normalizedBuffer = audioContext.createBuffer(numberOfChannels, length, sampleRate);
+
+  // Apply gain to all channels
+  for (let channel = 0; channel < numberOfChannels; channel++) {
+    const sourceData = audioBuffer.getChannelData(channel);
+    const targetData = normalizedBuffer.getChannelData(channel);
+
+    for (let i = 0; i < length; i++) {
+      targetData[i] = sourceData[i] * gain;
+    }
+  }
+
+  return normalizedBuffer;
+}
+
+/**
  * Encodes an AudioBuffer to a WAV Blob with configurable bit depth
  */
 function audioBufferToWav(audioBuffer: AudioBuffer, bitDepth: number = 16): Blob {
@@ -249,12 +297,13 @@ export async function convertAudioFormat(
   targetFormat: string,
   targetSampleRate?: number,
   targetChannels?: number,
-  bitDepth: number = 16
+  bitDepth: number = 16,
+  normalize: boolean = false
 ): Promise<Blob> {
   const format = targetFormat.toLowerCase();
 
   // For formats that need conversion (wav, mp3, ogg), or if sample rate/channel conversion is needed
-  const needsConversion = format === 'wav' || format === 'mp3' || format === 'ogg' || targetSampleRate || targetChannels;
+  const needsConversion = format === 'wav' || format === 'mp3' || format === 'ogg' || targetSampleRate || targetChannels || normalize;
 
   if (needsConversion) {
     // First, decode the audio to get an AudioBuffer
@@ -270,6 +319,11 @@ export async function convertAudioFormat(
     // Apply channel conversion if specified
     if (targetChannels && audioBuffer.numberOfChannels !== targetChannels) {
       audioBuffer = convertChannels(audioBuffer, targetChannels);
+    }
+
+    // Apply normalization if enabled
+    if (normalize) {
+      audioBuffer = normalizeAudioBuffer(audioBuffer);
     }
 
     // Convert based on target format
