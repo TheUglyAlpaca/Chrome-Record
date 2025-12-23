@@ -353,14 +353,16 @@ export const Waveform: React.FC<WaveformProps> = ({
               style={{
                 position: 'absolute',
                 top: 0,
-                bottom: 0,
+                height: `${100 * scale}%`,
                 left: `${startPercent}%`,
                 width: '10px', // Wider hit area
                 marginLeft: '-5px', // Center on percentage
                 cursor: 'ew-resize',
                 zIndex: 10,
                 display: 'flex',
-                justifyContent: 'center'
+                justifyContent: 'center',
+                transform: `scale(${1 / scale})`,
+                transformOrigin: 'top center'
               }}
             >
               <div style={{
@@ -393,14 +395,16 @@ export const Waveform: React.FC<WaveformProps> = ({
               style={{
                 position: 'absolute',
                 top: 0,
-                bottom: 0,
+                height: `${100 * scale}%`,
                 left: `${endPercent}%`,
                 width: '10px',
                 marginLeft: '-5px',
                 cursor: 'ew-resize',
                 zIndex: 10,
                 display: 'flex',
-                justifyContent: 'center'
+                justifyContent: 'center',
+                transform: `scale(${1 / scale})`,
+                transformOrigin: 'top center'
               }}
             >
               <div style={{
