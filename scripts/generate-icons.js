@@ -10,10 +10,10 @@ if (!fs.existsSync(iconsDir)) {
 }
 
 // Source SVG file
-const sourceIcon = path.join(iconsDir, 'audioicon.svg');
+const sourceIcon = path.join(iconsDir, 'recording_dot.svg');
 
 if (!fs.existsSync(sourceIcon)) {
-  console.error('❌ Error: public/icons/audioicon.svg not found!');
+  console.error('❌ Error: public/icons/recording_dot.svg not found!');
   process.exit(1);
 }
 
@@ -22,10 +22,8 @@ const sizes = [16, 48, 128];
 
 async function generateIcons() {
   try {
-    // Read SVG content and force white color
-    let svgContent = fs.readFileSync(sourceIcon, 'utf8');
-    // Replace black fill with white
-    svgContent = svgContent.replace(/fill="#000000"/g, 'fill="#ffffff"');
+    // Read SVG content
+    const svgContent = fs.readFileSync(sourceIcon, 'utf8');
 
     const svgBuffer = Buffer.from(svgContent);
 

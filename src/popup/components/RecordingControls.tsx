@@ -25,7 +25,7 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
 }) => {
   return (
     <div className="recording-controls">
-      <div className="zoom-controls-wrapper">
+      <div className="zoom-group">
         <button className="control-button" onClick={onZoomOut} title="Zoom Out">
           <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
             <circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="2" fill="none" />
@@ -60,24 +60,27 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
         )}
       </button>
 
-      <button className="control-button" onClick={onReset} title="Return to Start">
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
-          {/* Skip to beginning icon: vertical line + double left arrows */}
-          <line x1="3" y1="5" x2="3" y2="15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          <path d="M7 6L4 10L7 14" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-          <path d="M12 6L9 10L12 14" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </button>
+      <div className="playback-group">
+        <button className="control-button" onClick={onReset} title="Return to Start">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+            {/* Skip to beginning icon: vertical line + double left arrows */}
+            <line x1="3" y1="5" x2="3" y2="15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            <path d="M7 6L4 10L7 14" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M12 6L9 10L12 14" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
 
-      <button
-        className={`control-button ${isLooping ? 'active' : ''}`}
-        onClick={onLoop}
-        title="Loop"
-      >
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
-          <path d="M10 2C5.58 2 2 5.58 2 10s3.58 8 8 8c1.85 0 3.55-.63 4.9-1.69l-1.42-1.42C12.64 15.56 11.38 16 10 16c-3.31 0-6-2.69-6-6s2.69-6 6-6c3.31 0 6 2.69 6 6h-2l3 4 3-4h-2c0-4.42-3.58-8-8-8z" />
-        </svg>
-      </button>
+        <button
+          className={`control-button ${isLooping ? 'active' : ''}`}
+          onClick={onLoop}
+          title="Loop"
+        >
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+            <path d="M10 2C5.58 2 2 5.58 2 10s3.58 8 8 8c1.85 0 3.55-.63 4.9-1.69l-1.42-1.42C12.64 15.56 11.38 16 10 16c-3.31 0-6-2.69-6-6s2.69-6 6-6c3.31 0 6 2.69 6 6h-2l3 4 3-4h-2c0-4.42-3.58-8-8-8z" />
+          </svg>
+        </button>
+      </div>
+
     </div>
   );
 };

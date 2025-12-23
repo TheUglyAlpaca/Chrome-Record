@@ -279,28 +279,37 @@ body.forest-mode {
 }
 
 /* Recording Controls */
+/* Recording Controls */
+/* Recording Controls */
 .recording-controls {
   display: flex;
   flex-direction: row;
   justify-content: center;
   align-items: center;
-  gap: 16px;
-  padding: 8px 0;
+  gap: 32px;
+  /* Add bottom padding to accommodate zoom text */
+  padding: 8px 0 24px 0;
   flex-shrink: 0;
   width: 100%;
 }
 
-.zoom-controls-wrapper {
+.zoom-group {
   display: flex;
-  position: relative;
   align-items: center;
-  gap: 4px;
-  /* Slight gap between buttons */
+  gap: 32px;
+  position: relative;
+}
+
+.playback-group {
+  display: flex;
+  align-items: center;
+  gap: 32px;
 }
 
 .zoom-level {
   position: absolute;
-  bottom: -10px;
+  /* Text hangs below the buttons */
+  bottom: -16px;
   left: 50%;
   transform: translateX(-50%);
   font-size: 10px;
@@ -752,8 +761,8 @@ body.forest-mode {
 /* Buy me a coffee button */
 .buy-coffee-button {
   position: fixed;
-  bottom: 8px;
-  right: 12px;
+  bottom: 0px;
+  right: 0px;
   background: none;
   border: none;
   color: var(--text-secondary);
