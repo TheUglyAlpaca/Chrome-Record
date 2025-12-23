@@ -8,31 +8,31 @@ function resampleAudioBuffer(
   targetSampleRate: number
 ): AudioBuffer {
   const sourceSampleRate = audioBuffer.sampleRate;
-  
+
   // If sample rates match, return original
   if (sourceSampleRate === targetSampleRate) {
     return audioBuffer;
   }
-  
+
   const numberOfChannels = audioBuffer.numberOfChannels;
   const length = audioBuffer.length;
   const ratio = sourceSampleRate / targetSampleRate;
   const newLength = Math.round(length / ratio);
-  
+
   // Create new buffer with target sample rate
   const audioContext = new AudioContext();
   const newBuffer = audioContext.createBuffer(numberOfChannels, newLength, targetSampleRate);
-  
+
   // Simple linear interpolation resampling
   for (let channel = 0; channel < numberOfChannels; channel++) {
     const sourceData = audioBuffer.getChannelData(channel);
     const targetData = newBuffer.getChannelData(channel);
-    
+
     for (let i = 0; i < newLength; i++) {
       const sourceIndex = i * ratio;
       const index = Math.floor(sourceIndex);
       const fraction = sourceIndex - index;
-      
+
       if (index + 1 < length) {
         targetData[i] = sourceData[index] * (1 - fraction) + sourceData[index + 1] * fraction;
       } else {
@@ -40,7 +40,7 @@ function resampleAudioBuffer(
       }
     }
   }
-  
+
   return newBuffer;
 }
 
@@ -52,22 +52,22 @@ function convertChannels(
   targetChannels: number
 ): AudioBuffer {
   const sourceChannels = audioBuffer.numberOfChannels;
-  
+
   // If channels match, return original
   if (sourceChannels === targetChannels) {
     return audioBuffer;
   }
-  
+
   const sampleRate = audioBuffer.sampleRate;
   const length = audioBuffer.length;
   const newBuffer = new AudioContext().createBuffer(targetChannels, length, sampleRate);
-  
+
   if (targetChannels === 1 && sourceChannels === 2) {
     // Stereo to mono: average the channels
     const leftChannel = audioBuffer.getChannelData(0);
     const rightChannel = audioBuffer.getChannelData(1);
     const monoChannel = newBuffer.getChannelData(0);
-    
+
     for (let i = 0; i < length; i++) {
       monoChannel[i] = (leftChannel[i] + rightChannel[i]) / 2;
     }
@@ -76,43 +76,24 @@ function convertChannels(
     const monoChannel = audioBuffer.getChannelData(0);
     const leftChannel = newBuffer.getChannelData(0);
     const rightChannel = newBuffer.getChannelData(1);
-    
+
     for (let i = 0; i < length; i++) {
       leftChannel[i] = monoChannel[i];
       rightChannel[i] = monoChannel[i];
     }
   }
-  
+
   return newBuffer;
 }
 
 /**
- * Converts an audio blob to WAV format with optional sample rate and channel conversion
+ * Encodes an AudioBuffer to a WAV Blob
  */
-export async function convertToWav(
-  blob: Blob,
-  targetSampleRate?: number,
-  targetChannels?: number
-): Promise<Blob> {
-  const arrayBuffer = await blob.arrayBuffer();
-  const audioContext = new AudioContext();
-  let audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-  
-  // Apply sample rate conversion if specified
-  if (targetSampleRate && audioBuffer.sampleRate !== targetSampleRate) {
-    audioBuffer = resampleAudioBuffer(audioBuffer, targetSampleRate);
-  }
-  
-  // Apply channel conversion if specified
-  if (targetChannels && audioBuffer.numberOfChannels !== targetChannels) {
-    audioBuffer = convertChannels(audioBuffer, targetChannels);
-  }
-  
-  // Get final audio data
+function audioBufferToWav(audioBuffer: AudioBuffer): Blob {
   const sampleRate = audioBuffer.sampleRate;
   const numberOfChannels = audioBuffer.numberOfChannels;
   const length = audioBuffer.length;
-  
+
   // Interleave audio data
   const interleaved = new Float32Array(length * numberOfChannels);
   for (let i = 0; i < length; i++) {
@@ -120,25 +101,25 @@ export async function convertToWav(
       interleaved[i * numberOfChannels + channel] = audioBuffer.getChannelData(channel)[i];
     }
   }
-  
+
   // Convert to 16-bit PCM
   const pcm = new Int16Array(interleaved.length);
   for (let i = 0; i < interleaved.length; i++) {
     const s = Math.max(-1, Math.min(1, interleaved[i]));
     pcm[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
   }
-  
+
   // Create WAV file
   const wavBuffer = new ArrayBuffer(44 + pcm.length * 2);
   const view = new DataView(wavBuffer);
-  
+
   // WAV header
   const writeString = (offset: number, string: string) => {
     for (let i = 0; i < string.length; i++) {
       view.setUint8(offset + i, string.charCodeAt(i));
     }
   };
-  
+
   writeString(0, 'RIFF');
   view.setUint32(4, 36 + pcm.length * 2, true);
   writeString(8, 'WAVE');
@@ -152,12 +133,79 @@ export async function convertToWav(
   view.setUint16(34, 16, true); // bits per sample
   writeString(36, 'data');
   view.setUint32(40, pcm.length * 2, true);
-  
+
   // Write PCM data
   const pcmView = new Int16Array(wavBuffer, 44);
   pcmView.set(pcm);
-  
+
   return new Blob([wavBuffer], { type: 'audio/wav' });
+}
+
+/**
+ * Converts an audio blob to WAV format with optional sample rate and channel conversion
+ */
+export async function convertToWav(
+  blob: Blob,
+  targetSampleRate?: number,
+  targetChannels?: number
+): Promise<Blob> {
+  const arrayBuffer = await blob.arrayBuffer();
+  const audioContext = new AudioContext();
+  let audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+  // Apply sample rate conversion if specified
+  if (targetSampleRate && audioBuffer.sampleRate !== targetSampleRate) {
+    audioBuffer = resampleAudioBuffer(audioBuffer, targetSampleRate);
+  }
+
+  // Apply channel conversion if specified
+  if (targetChannels && audioBuffer.numberOfChannels !== targetChannels) {
+    audioBuffer = convertChannels(audioBuffer, targetChannels);
+  }
+
+  return audioBufferToWav(audioBuffer);
+}
+
+/**
+ * Crops an audio blob to the specified start and end times
+ */
+export async function cropAudioBlob(
+  blob: Blob,
+  startTime: number,
+  endTime: number
+): Promise<Blob> {
+  const arrayBuffer = await blob.arrayBuffer();
+  const audioContext = new AudioContext();
+  const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+  const sampleRate = audioBuffer.sampleRate;
+  const startSample = Math.floor(startTime * sampleRate);
+  const endSample = Math.floor(endTime * sampleRate);
+  const newLength = Math.max(0, endSample - startSample);
+
+  if (newLength === 0 || startSample >= audioBuffer.length) {
+    return blob; // Invalid crop, return original
+  }
+
+  const newBuffer = audioContext.createBuffer(
+    audioBuffer.numberOfChannels,
+    newLength,
+    sampleRate
+  );
+
+  for (let i = 0; i < audioBuffer.numberOfChannels; i++) {
+    const channelData = audioBuffer.getChannelData(i);
+    const newChannelData = newBuffer.getChannelData(i);
+
+    // Copy the slice
+    for (let j = 0; j < newLength; j++) {
+      if (startSample + j < channelData.length) {
+        newChannelData[j] = channelData[startSample + j];
+      }
+    }
+  }
+
+  return audioBufferToWav(newBuffer);
 }
 
 /**
@@ -170,41 +218,41 @@ export async function convertAudioFormat(
   targetChannels?: number
 ): Promise<Blob> {
   const format = targetFormat.toLowerCase();
-  
+
   // For formats that need conversion (wav, mp3), or if sample rate/channel conversion is needed
   // we need to go through WAV conversion first
   const needsConversion = format === 'wav' || format === 'mp3' || targetSampleRate || targetChannels;
-  
+
   if (needsConversion) {
     // Convert to WAV with sample rate and channel conversion
     let wavBlob = await convertToWav(blob, targetSampleRate, targetChannels);
-    
+
     // If target format is WAV, return it
     if (format === 'wav') {
       return wavBlob;
     }
-    
+
     // For MP3, we'd need a library like lamejs
     // For now, convert to WAV as a fallback
     if (format === 'mp3') {
       console.warn('MP3 conversion not yet implemented, converting to WAV instead');
       return wavBlob;
     }
-    
+
     // For other formats, if we needed conversion, return the converted WAV
     // Otherwise, we'd need to re-encode to the target format
     return wavBlob;
   }
-  
+
   // If already in the target format and no conversion needed, return as-is
   if (format === 'webm' && blob.type.includes('webm')) {
     return blob;
   }
-  
+
   if (format === 'ogg' && blob.type.includes('ogg')) {
     return blob;
   }
-  
+
   // Default: return original blob
   return blob;
 }

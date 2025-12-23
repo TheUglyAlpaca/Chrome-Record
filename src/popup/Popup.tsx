@@ -4,7 +4,7 @@ import { useAudioRecorder } from './hooks/useAudioRecorder';
 import { useWaveform } from './hooks/useWaveform';
 import { formatTime, formatDate, downloadAudio } from './utils/audioUtils';
 import { getFileExtension } from './utils/formatUtils';
-import { convertAudioFormat } from './utils/audioConverter';
+import { convertAudioFormat, cropAudioBlob } from './utils/audioConverter';
 import { saveRecording, migrateFromChromeStorage, updateRecordingName, deleteRecording } from './utils/storageManager';
 
 
@@ -29,6 +29,8 @@ const Popup: React.FC = () => {
   const [isLooping, setIsLooping] = useState(false);
   const [currentPlayTime, setCurrentPlayTime] = useState(0);
   const [startTime, setStartTime] = useState(0);
+  const [trimStart, setTrimStart] = useState(0);
+  const [trimEnd, setTrimEnd] = useState(0);
   const [theme, setTheme] = useState<'dark' | 'light' | 'midnight' | 'forest'>('dark');
   const [preferences, setPreferences] = useState<{
     format?: string;
@@ -199,6 +201,8 @@ const Popup: React.FC = () => {
             // Audio is ready - immediately set current time to show playhead
             console.log('Audio loaded, duration:', audio.duration);
             setCurrentPlayTime(audio.currentTime || 0);
+            setTrimStart(0);
+            setTrimEnd(audio.duration);
           });
 
           audio.addEventListener('ended', () => {
@@ -218,7 +222,10 @@ const Popup: React.FC = () => {
 
           // Reset play time to 0 when new recording is loaded
           setCurrentPlayTime(0);
+          setCurrentPlayTime(0);
           setStartTime(0);
+          setTrimStart(0);
+          setTrimEnd(0);
         } catch (error) {
           console.error('Error analyzing audio:', error);
         }
@@ -290,7 +297,11 @@ const Popup: React.FC = () => {
       setAudioBlob(null);
       setIsPlaying(false);
       setCurrentPlayTime(0);
+      setIsPlaying(false);
+      setCurrentPlayTime(0);
       setStartTime(0);
+      setTrimStart(0);
+      setTrimEnd(0);
       setCurrentRecordingChannelMode(undefined);
 
       // If useTabTitle is enabled, get the tab title and set it as the recording name
@@ -386,7 +397,29 @@ const Popup: React.FC = () => {
       const updatePlayhead = () => {
         if (audioRef.current && isPlaying) {
           const currentTime = audioRef.current.currentTime;
-          setCurrentPlayTime(currentTime);
+          const duration = audioRef.current.duration;
+
+          // Check for trim boundaries
+          const effectiveEnd = (trimEnd > 0 && trimEnd < duration) ? trimEnd : duration;
+          const effectiveStart = trimStart > 0 ? trimStart : 0;
+
+          if (currentTime >= effectiveEnd) {
+            if (isLooping) {
+              audioRef.current.currentTime = effectiveStart;
+              setCurrentPlayTime(effectiveStart);
+            } else {
+              audioRef.current.pause();
+              audioRef.current.currentTime = effectiveStart;
+              setIsPlaying(false);
+              setCurrentPlayTime(effectiveStart);
+              cancelAnimationFrame(playheadAnimationFrameRef.current!);
+              playheadAnimationFrameRef.current = null;
+              return;
+            }
+          } else {
+            setCurrentPlayTime(currentTime);
+          }
+
           playheadAnimationFrameRef.current = requestAnimationFrame(updatePlayhead);
         }
       };
@@ -407,7 +440,7 @@ const Popup: React.FC = () => {
         playheadAnimationFrameRef.current = null;
       }
     }
-  }, [isPlaying]);
+  }, [isPlaying, isLooping, trimStart, trimEnd]);
 
   const handlePlay = async () => {
     if (audioRef.current) {
@@ -430,6 +463,13 @@ const Popup: React.FC = () => {
           }
 
           // Immediately update current time to show playhead before play starts
+          // If current time is outside trimmed range, jump to start
+          const effectiveStart = trimStart > 0 ? trimStart : 0;
+          const effectiveEnd = (trimEnd > 0 && trimEnd < (audioRef.current.duration || 0)) ? trimEnd : (audioRef.current.duration || 0);
+
+          if (audioRef.current.currentTime < effectiveStart || audioRef.current.currentTime >= effectiveEnd) {
+            audioRef.current.currentTime = effectiveStart;
+          }
           setCurrentPlayTime(audioRef.current.currentTime || 0);
 
           await audioRef.current.play();
@@ -438,7 +478,11 @@ const Popup: React.FC = () => {
           // Update current time immediately after play starts
           setCurrentPlayTime(audioRef.current.currentTime || 0);
 
-          if (isLooping) {
+          // Only use native loop if NO trim is applied (start is 0 and end is full duration)
+          // otherwise we handle loop manually in the animation frame
+          const isTrimmed = trimStart > 0 || (trimEnd > 0 && trimEnd < audioRef.current.duration);
+
+          if (isLooping && !isTrimmed) {
             audioRef.current.loop = true;
           } else {
             audioRef.current.loop = false;
@@ -463,14 +507,17 @@ const Popup: React.FC = () => {
   const handleLoop = () => {
     setIsLooping(!isLooping);
     if (audioRef.current) {
-      audioRef.current.loop = !isLooping;
+      // Native loop only if not trimmed
+      const isTrimmed = trimStart > 0 || (trimEnd > 0 && trimEnd < audioRef.current.duration);
+      audioRef.current.loop = !isLooping && !isTrimmed;
     }
   };
 
   const handleReset = () => {
     if (audioRef.current) {
-      audioRef.current.currentTime = 0;
-      setCurrentPlayTime(0);
+      const effectiveStart = trimStart > 0 ? trimStart : 0;
+      audioRef.current.currentTime = effectiveStart;
+      setCurrentPlayTime(effectiveStart);
     }
   };
 
@@ -489,6 +536,23 @@ const Popup: React.FC = () => {
     setZoom(Math.max(zoom - 1, 1));
   };
 
+  const handleTrimChange = (start: number, end: number) => {
+    setTrimStart(start);
+    setTrimEnd(end);
+
+    // If playing, adjust playback to stay within trim bounds
+    if (audioRef.current) {
+      if (audioRef.current.currentTime < start) {
+        audioRef.current.currentTime = start;
+        setCurrentPlayTime(start);
+      } else if (audioRef.current.currentTime > end) {
+        audioRef.current.currentTime = start;
+        setCurrentPlayTime(start);
+        // Optional: stop or loop? For now just jump back
+      }
+    }
+  };
+
   const handleDownload = async () => {
     if (audioBlob) {
       // Use current format preference, but preserve original channel mode for playback
@@ -500,8 +564,24 @@ const Popup: React.FC = () => {
       const targetChannels = channelMode === 'mono' ? 1 : channelMode === 'stereo' ? 2 : undefined;
       const extension = getFileExtension(format);
 
+      let blobToProcess = audioBlob;
+      const duration = audioRef.current?.duration || 0;
+
+      // Crop audio if trim range is set
+      if (trimStart > 0 || (trimEnd > 0 && trimEnd < duration)) {
+        try {
+          console.log('Cropping audio...', { trimStart, trimEnd, duration });
+          // Note: cropAudioBlob expects seconds, same as our trim state
+          blobToProcess = await cropAudioBlob(audioBlob, trimStart, trimEnd || duration);
+          console.log('Audio cropped, new size:', blobToProcess.size);
+        } catch (error) {
+          console.error('Error cropping audio:', error);
+          // Fallback to original blob if crop fails
+        }
+      }
+
       // Convert audio to the target format with sample rate and channel mode
-      const convertedBlob = await convertAudioFormat(audioBlob, format, sampleRate, targetChannels);
+      const convertedBlob = await convertAudioFormat(blobToProcess, format, sampleRate, targetChannels);
 
       // Remove any existing extension from recording name
       const nameWithoutExt = (recordingName || 'recording').replace(/\.[^/.]+$/, '');
@@ -551,6 +631,9 @@ const Popup: React.FC = () => {
     setIsLooping(false);
     setCurrentPlayTime(0);
     setStartTime(0);
+    setStartTime(0);
+    setTrimStart(0);
+    setTrimEnd(0);
     setZoom(1);
 
     // Clear waveform data
@@ -751,6 +834,9 @@ const Popup: React.FC = () => {
                     theme === 'forest' ? '#064e3b' :
                       '#1f1f1f'
               }
+              trimStart={trimStart}
+              trimEnd={trimEnd || displayDuration}
+              onTrimChange={handleTrimChange}
             />
           </div>
 

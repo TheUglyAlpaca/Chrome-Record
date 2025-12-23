@@ -12,6 +12,9 @@ interface WaveformProps {
   onSeek?: (time: number) => void;
   isRecording?: boolean;
   channelMode?: 'mono' | 'stereo';
+  trimStart?: number;
+  trimEnd?: number;
+  onTrimChange?: (start: number, end: number) => void;
 }
 
 export const Waveform: React.FC<WaveformProps> = ({
@@ -25,7 +28,10 @@ export const Waveform: React.FC<WaveformProps> = ({
   duration = 0,
   onSeek,
   isRecording = false,
-  channelMode
+  channelMode,
+  trimStart = 0,
+  trimEnd = 0,
+  onTrimChange
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -35,6 +41,9 @@ export const Waveform: React.FC<WaveformProps> = ({
   const lastKnownTimeRef = useRef<number>(0);
   const interpolatedPositionRef = useRef<number>(0);
   const prevZoomRef = useRef<number>(zoom);
+
+  // Drag state
+  const [draggingHandle, setDraggingHandle] = React.useState<'start' | 'end' | null>(null);
 
   // Draw waveform (only when data changes)
   useEffect(() => {
@@ -209,26 +218,67 @@ export const Waveform: React.FC<WaveformProps> = ({
     }
   }, [backgroundColor, barColor, data, width, height, zoom, duration]);
 
-  const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!onSeek || !duration || isRecording) return;
+  const getTimeFromEvent = (e: React.MouseEvent | MouseEvent) => {
+    if (!duration || !containerRef.current) return 0;
 
-    const rect = e.currentTarget.getBoundingClientRect();
+    const rect = containerRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
-    // Adjust click position for zoom scale
     const scale = zoom;
     const containerCenterX = rect.width / 2;
     const clickOffsetFromCenter = x - containerCenterX;
     const scaledOffset = clickOffsetFromCenter / scale;
     const adjustedX = containerCenterX + scaledOffset;
     const percentage = Math.max(0, Math.min(1, adjustedX / rect.width));
-    const seekTime = percentage * duration;
+    return percentage * duration;
+  };
 
+  const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!onSeek || !duration || isRecording || draggingHandle) return;
+    const seekTime = getTimeFromEvent(e);
     onSeek(Math.max(0, Math.min(seekTime, duration)));
   };
+
+  const handleMouseDown = (e: React.MouseEvent, handle: 'start' | 'end') => {
+    e.stopPropagation(); // Prevent seek click
+    setDraggingHandle(handle);
+  };
+
+  useEffect(() => {
+    if (!draggingHandle) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!onTrimChange || !duration) return;
+      const time = getTimeFromEvent(e);
+      // Clamp values and ensure start < end
+      if (draggingHandle === 'start') {
+        const maxStart = trimEnd > 0 ? trimEnd - 0.1 : duration - 0.1;
+        onTrimChange(Math.max(0, Math.min(time, maxStart)), trimEnd || duration);
+      } else {
+        const minEnd = trimStart + 0.1;
+        onTrimChange(trimStart, Math.min(duration, Math.max(time, minEnd)));
+      }
+    };
+
+    const handleMouseUp = () => {
+      setDraggingHandle(null);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [draggingHandle, duration, onTrimChange, trimStart, trimEnd, zoom]); // including zoom to be safe for closure
 
   // Calculate scale based on zoom for visual scaling
   // zoom > 1 means zoom in (make larger), zoom < 1 means zoom out (make smaller)
   const scale = zoom;
+
+  // Calculate percentages for render
+  const startPercent = duration > 0 ? (trimStart / duration) * 100 : 0;
+  const endPercent = duration > 0 ? ((trimEnd || duration) / duration) * 100 : 100;
 
   return (
     <div
@@ -242,7 +292,8 @@ export const Waveform: React.FC<WaveformProps> = ({
         overflow: 'hidden',
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'center'
+        justifyContent: 'center',
+        userSelect: 'none'
       }}
     >
       {channelMode && (
@@ -267,6 +318,116 @@ export const Waveform: React.FC<WaveformProps> = ({
             display: 'block'
           }}
         />
+
+        {/* Dimming Overlays */}
+        {trimStart > 0 && (
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            height: '100%',
+            width: `${startPercent}%`,
+            backgroundColor: 'rgba(0, 0, 0, 0.6)',
+            pointerEvents: 'none'
+          }} />
+        )}
+
+        {trimEnd > 0 && trimEnd < duration && (
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: `${endPercent}%`,
+            height: '100%',
+            right: 0, // Fill to end
+            backgroundColor: 'rgba(0, 0, 0, 0.6)',
+            pointerEvents: 'none'
+          }} />
+        )}
+
+        {/* Drag Handles */}
+        {!isRecording && onTrimChange && duration > 0 && (
+          <>
+            {/* Start Handle */}
+            <div
+              onMouseDown={(e) => handleMouseDown(e, 'start')}
+              style={{
+                position: 'absolute',
+                top: 0,
+                bottom: 0,
+                left: `${startPercent}%`,
+                width: '10px', // Wider hit area
+                marginLeft: '-5px', // Center on percentage
+                cursor: 'ew-resize',
+                zIndex: 10,
+                display: 'flex',
+                justifyContent: 'center'
+              }}
+            >
+              <div style={{
+                width: '2px',
+                height: '100%',
+                backgroundColor: '#fff',
+                boxShadow: '0 0 4px rgba(0,0,0,0.5)'
+              }} />
+              <div style={{
+                position: 'absolute',
+                top: '0',
+                width: '12px',
+                height: '12px',
+                backgroundColor: '#fff',
+                borderRadius: '0 0 2px 2px'
+              }} />
+              <div style={{
+                position: 'absolute',
+                bottom: '0',
+                width: '12px',
+                height: '12px',
+                backgroundColor: '#fff',
+                borderRadius: '2px 2px 0 0'
+              }} />
+            </div>
+
+            {/* End Handle */}
+            <div
+              onMouseDown={(e) => handleMouseDown(e, 'end')}
+              style={{
+                position: 'absolute',
+                top: 0,
+                bottom: 0,
+                left: `${endPercent}%`,
+                width: '10px',
+                marginLeft: '-5px',
+                cursor: 'ew-resize',
+                zIndex: 10,
+                display: 'flex',
+                justifyContent: 'center'
+              }}
+            >
+              <div style={{
+                width: '2px',
+                height: '100%',
+                backgroundColor: '#fff',
+                boxShadow: '0 0 4px rgba(0,0,0,0.5)'
+              }} />
+              <div style={{
+                position: 'absolute',
+                top: '0',
+                width: '12px',
+                height: '12px',
+                backgroundColor: '#fff',
+                borderRadius: '0 0 2px 2px'
+              }} />
+              <div style={{
+                position: 'absolute',
+                bottom: '0',
+                width: '12px',
+                height: '12px',
+                backgroundColor: '#fff',
+                borderRadius: '2px 2px 0 0'
+              }} />
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
