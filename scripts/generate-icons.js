@@ -1,7 +1,7 @@
 // Script to generate recording icons for the Chrome extension
 const fs = require('fs');
 const path = require('path');
-const { PNG } = require('pngjs');
+const sharp = require('sharp');
 
 // Create icons directory if it doesn't exist
 const iconsDir = path.join(__dirname, '../public/icons');
@@ -9,68 +9,48 @@ if (!fs.existsSync(iconsDir)) {
   fs.mkdirSync(iconsDir, { recursive: true });
 }
 
-// Function to create a recording icon (red circle)
-function createRecordingIcon(size) {
-  const png = new PNG({ width: size, height: size });
-  const centerX = size / 2;
-  const centerY = size / 2;
-  const radius = size * 0.4; // Circle takes up 80% of the icon
-  const radiusSquared = radius * radius;
-  
-  // Background color (dark gray/black)
-  const bgColor = { r: 30, g: 30, b: 30 };
-  // Recording circle color (bright red)
-  const recordColor = { r: 255, g: 59, b: 48 }; // iOS-style red
-  
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const idx = (size * y + x) << 2;
-      
-      // Calculate distance from center
-      const dx = x - centerX;
-      const dy = y - centerY;
-      const distanceSquared = dx * dx + dy * dy;
-      
-      // Draw circle with slight anti-aliasing
-      if (distanceSquared <= radiusSquared) {
-        // Inside circle - draw red
-        const distance = Math.sqrt(distanceSquared);
-        if (distance <= radius - 1) {
-          // Solid red
-          png.data[idx] = recordColor.r;
-          png.data[idx + 1] = recordColor.g;
-          png.data[idx + 2] = recordColor.b;
-          png.data[idx + 3] = 255;
-        } else {
-          // Anti-aliasing edge
-          const alpha = Math.max(0, Math.min(255, (radius - distance) * 255));
-          png.data[idx] = recordColor.r;
-          png.data[idx + 1] = recordColor.g;
-          png.data[idx + 2] = recordColor.b;
-          png.data[idx + 3] = alpha;
-        }
-      } else {
-        // Outside circle - draw background
-        png.data[idx] = bgColor.r;
-        png.data[idx + 1] = bgColor.g;
-        png.data[idx + 2] = bgColor.b;
-        png.data[idx + 3] = 255;
-      }
-    }
-  }
-  
-  return png;
+// Source SVG file
+const sourceIcon = path.join(iconsDir, 'audioicon.svg');
+
+if (!fs.existsSync(sourceIcon)) {
+  console.error('❌ Error: public/icons/audioicon.svg not found!');
+  process.exit(1);
 }
 
 // Generate icons for different sizes
 const sizes = [16, 48, 128];
 
-sizes.forEach((size) => {
-  const png = createRecordingIcon(size);
-  const filename = path.join(iconsDir, `icon${size}.png`);
-  
-  png.pack().pipe(fs.createWriteStream(filename));
-  console.log(`Created ${filename} (${size}x${size})`);
-});
+async function generateIcons() {
+  try {
+    // Read SVG content and force white color
+    let svgContent = fs.readFileSync(sourceIcon, 'utf8');
+    // Replace black fill with white
+    svgContent = svgContent.replace(/fill="#000000"/g, 'fill="#ffffff"');
 
-console.log('\n✅ Recording icons generated successfully!');
+    const svgBuffer = Buffer.from(svgContent);
+
+    for (const size of sizes) {
+      const filename = path.join(iconsDir, `icon${size}.png`);
+
+      // Render at higher density first to ensure crisp edges when trimming/resizing
+      // Then trim transparent whitespace to maximize content size
+      // Finally resize to fit in the target square container
+      await sharp(svgBuffer, { density: 300 })
+        .trim() // Remove surrounding whitespace
+        .resize(size, size, {
+          fit: 'contain',
+          background: { r: 0, g: 0, b: 0, alpha: 0 }
+        })
+        .png()
+        .toFile(filename);
+
+      console.log(`Created ${filename} (${size}x${size})`);
+    }
+    console.log('\n✅ Recording icons generated (white & maximized)!');
+  } catch (error) {
+    console.error('Error generating icons:', error);
+    process.exit(1);
+  }
+}
+
+generateIcons();
