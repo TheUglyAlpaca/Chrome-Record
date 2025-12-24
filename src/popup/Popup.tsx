@@ -66,7 +66,7 @@ const Popup: React.FC = () => {
 
   // Load all initial data in a single batch to reduce startup time
   useEffect(() => {
-    // Batch all storage reads together
+    // Batch all storage reads together - include session storage for current recording state
     chrome.storage.local.get(['migratedToIndexedDB', 'isLightMode', 'theme', 'preferences'], async (result) => {
       // Set theme immediately (no async)
       let initialTheme: 'dark' | 'light' | 'midnight' | 'forest' = 'dark';
@@ -107,6 +107,25 @@ const Popup: React.FC = () => {
       }
     });
 
+    // Restore current recording state from session storage (persists across popup close/reopen)
+    chrome.storage.session.get(['currentRecordingState'], (sessionResult) => {
+      if (sessionResult.currentRecordingState) {
+        const savedState = sessionResult.currentRecordingState;
+        if (savedState.recordingName) {
+          setRecordingName(savedState.recordingName);
+        }
+        if (savedState.recordingTimestamp) {
+          setRecordingTimestamp(new Date(savedState.recordingTimestamp));
+        }
+        if (savedState.currentRecordingId) {
+          setCurrentRecordingId(savedState.currentRecordingId);
+        }
+        if (savedState.currentRecordingChannelMode) {
+          setCurrentRecordingChannelMode(savedState.currentRecordingChannelMode);
+        }
+      }
+    });
+
     // Listen for preference changes
     const listener = (changes: { [key: string]: chrome.storage.StorageChange }) => {
       if (changes.preferences) {
@@ -127,6 +146,21 @@ const Popup: React.FC = () => {
       chrome.storage.onChanged.removeListener(listener);
     };
   }, [checkRecordingState]);
+
+  // Persist current recording state to session storage when it changes
+  useEffect(() => {
+    // Only persist if we have a recording loaded (name is set)
+    if (recordingName || currentRecordingId) {
+      chrome.storage.session.set({
+        currentRecordingState: {
+          recordingName,
+          recordingTimestamp: recordingTimestamp.toISOString(),
+          currentRecordingId,
+          currentRecordingChannelMode
+        }
+      });
+    }
+  }, [recordingName, recordingTimestamp, currentRecordingId, currentRecordingChannelMode]);
 
   // Update recording name and timestamp when recording starts
   useEffect(() => {
@@ -162,27 +196,30 @@ const Popup: React.FC = () => {
 
   // Analyze audio blob when recording stops - show full waveform
   useEffect(() => {
+    // Track if this effect has been cancelled
+    let cancelled = false;
+
     if (audioBlob && !isRecording) {
       console.log('Analyzing audio blob, size:', audioBlob.size);
       // Clear any existing waveform first
       clearWaveform();
 
       // Small delay to ensure stream analysis is stopped
-      setTimeout(async () => {
-        try {
-          // Use the recording's original channel mode if available, otherwise use current preference
-          const format = preferences.format || 'webm';
-          const sampleRate = preferences.sampleRate ? parseInt(preferences.sampleRate) : undefined;
-          const channelMode = currentRecordingChannelMode || preferences.channelMode || undefined;
-          const targetChannels = channelMode === 'mono' ? 1 : channelMode === 'stereo' ? 2 : undefined;
-          const convertedBlob = await convertAudioFormat(audioBlob, format, sampleRate, targetChannels);
+      const timeoutId = setTimeout(async () => {
+        if (cancelled) return; // Don't proceed if effect was cancelled
 
-          // Analyze the full audio to show complete waveform
-          await analyzeAudio(convertedBlob);
+        try {
+          // Analyze the ORIGINAL blob for waveform display (no format conversion)
+          // This avoids issues with MP3/WAV conversion and is faster
+          // Format conversion only happens on save/download
+          await analyzeAudio(audioBlob);
+
+          if (cancelled) return; // Check again after async operation
+
           console.log('Audio analysis complete, waveform should be visible');
 
-          // Create audio element for playback
-          const audioUrl = URL.createObjectURL(convertedBlob);
+          // Create audio element for playback using the ORIGINAL blob
+          const audioUrl = URL.createObjectURL(audioBlob);
 
           // Clean up old audio URL if exists
           if (audioRef.current && audioRef.current.src) {
@@ -222,16 +259,23 @@ const Popup: React.FC = () => {
 
           // Reset play time to 0 when new recording is loaded
           setCurrentPlayTime(0);
-          setCurrentPlayTime(0);
           setStartTime(0);
           setTrimStart(0);
           setTrimEnd(0);
         } catch (error) {
-          console.error('Error analyzing audio:', error);
+          if (!cancelled) {
+            console.error('Error analyzing audio:', error);
+          }
         }
       }, 100);
+
+      // Cleanup function - cancel pending operations
+      return () => {
+        cancelled = true;
+        clearTimeout(timeoutId);
+      };
     }
-  }, [audioBlob, isRecording, analyzeAudio, clearWaveform, preferences.format, currentRecordingChannelMode]);
+  }, [audioBlob, isRecording, analyzeAudio, clearWaveform]);
 
   const getTabTitle = async (): Promise<string | null> => {
     try {
@@ -674,6 +718,9 @@ const Popup: React.FC = () => {
       'recordingStartTime',
       'recordingChunks'
     ]);
+
+    // Clear session storage for current recording state
+    await chrome.storage.session.remove(['currentRecordingState']);
   };
 
   const handleThemeToggle = () => {
@@ -848,6 +895,7 @@ const Popup: React.FC = () => {
                     theme === 'forest' ? '#064e3b' :
                       '#1f1f1f'
               }
+              theme={theme}
               trimStart={trimStart}
               trimEnd={trimEnd || (isRecording ? recordingDuration : totalDuration)}
               onTrimChange={handleTrimChange}

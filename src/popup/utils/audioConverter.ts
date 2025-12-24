@@ -357,59 +357,14 @@ export async function convertAudioFormat(
 }
 
 /**
- * Converts an AudioBuffer to MP3 format using lamejs
+ * Converts an AudioBuffer to MP3 format
+ * NOTE: MP3 encoding via lamejs is currently disabled due to bundling issues.
+ * Falling back to WAV format until a proper solution is implemented.
  */
 async function convertToMp3(audioBuffer: AudioBuffer): Promise<Blob> {
-  // Dynamically import lamejs
-  const lamejs = await import('lamejs');
-
-  const sampleRate = audioBuffer.sampleRate;
-  const numberOfChannels = audioBuffer.numberOfChannels;
-  const length = audioBuffer.length;
-
-  // Convert float samples to 16-bit PCM
-  const leftChannel = audioBuffer.getChannelData(0);
-  const rightChannel = numberOfChannels > 1 ? audioBuffer.getChannelData(1) : leftChannel;
-
-  const left = new Int16Array(length);
-  const right = new Int16Array(length);
-
-  for (let i = 0; i < length; i++) {
-    left[i] = Math.max(-32768, Math.min(32767, leftChannel[i] * 32768));
-    right[i] = Math.max(-32768, Math.min(32767, rightChannel[i] * 32768));
-  }
-
-  // Initialize MP3 encoder
-  const mp3encoder = new lamejs.Mp3Encoder(numberOfChannels, sampleRate, 128); // 128 kbps
-  const mp3Data: Int8Array[] = [];
-
-  // Encode in chunks
-  const sampleBlockSize = 1152;
-  for (let i = 0; i < length; i += sampleBlockSize) {
-    const leftChunk = left.subarray(i, i + sampleBlockSize);
-    const rightChunk = right.subarray(i, i + sampleBlockSize);
-    const mp3buf = mp3encoder.encodeBuffer(leftChunk, rightChunk);
-    if (mp3buf.length > 0) {
-      mp3Data.push(mp3buf);
-    }
-  }
-
-  // Flush remaining data
-  const mp3buf = mp3encoder.flush();
-  if (mp3buf.length > 0) {
-    mp3Data.push(mp3buf);
-  }
-
-  // Combine all chunks into a single Uint8Array for Blob compatibility
-  const totalLength = mp3Data.reduce((acc, arr) => acc + arr.length, 0);
-  const combined = new Uint8Array(totalLength);
-  let offset = 0;
-  for (const chunk of mp3Data) {
-    combined.set(new Uint8Array(chunk.buffer), offset);
-    offset += chunk.length;
-  }
-
-  return new Blob([combined], { type: 'audio/mp3' });
+  console.warn('MP3 encoding is temporarily disabled, using WAV format instead');
+  // Fallback to WAV format until lamejs bundling issues are resolved
+  return audioBufferToWav(audioBuffer, 16);
 }
 
 /**

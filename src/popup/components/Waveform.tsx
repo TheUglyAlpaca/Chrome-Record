@@ -12,10 +12,19 @@ interface WaveformProps {
   onSeek?: (time: number) => void;
   isRecording?: boolean;
   channelMode?: 'mono' | 'stereo';
+  theme?: 'dark' | 'light' | 'midnight' | 'forest';
   trimStart?: number;
   trimEnd?: number;
   onTrimChange?: (start: number, end: number) => void;
 }
+
+// Theme-specific trim handle colors
+const trimHandleColors = {
+  dark: { start: '#00d4ff', startText: '#000', end: '#ff6b00', endText: '#fff' },
+  light: { start: '#0077b6', startText: '#fff', end: '#d62828', endText: '#fff' },
+  midnight: { start: '#a78bfa', startText: '#000', end: '#f472b6', endText: '#000' },
+  forest: { start: '#34d399', startText: '#000', end: '#fbbf24', endText: '#000' }
+};
 
 export const Waveform: React.FC<WaveformProps> = ({
   data,
@@ -29,6 +38,7 @@ export const Waveform: React.FC<WaveformProps> = ({
   onSeek,
   isRecording = false,
   channelMode,
+  theme = 'dark',
   trimStart = 0,
   trimEnd = 0,
   onTrimChange
@@ -350,8 +360,8 @@ export const Waveform: React.FC<WaveformProps> = ({
                 top: 0,
                 height: `${100 * scale}%`,
                 left: `${startPercent}%`,
-                width: '10px', // Wider hit area
-                marginLeft: '-5px', // Center on percentage
+                width: '16px', // Wider hit area
+                marginLeft: '-8px', // Center on percentage
                 cursor: 'ew-resize',
                 zIndex: 10,
                 display: 'flex',
@@ -361,27 +371,39 @@ export const Waveform: React.FC<WaveformProps> = ({
               }}
             >
               <div style={{
-                width: '2px',
+                width: '3px',
                 height: '100%',
-                backgroundColor: '#fff',
-                boxShadow: '0 0 4px rgba(0,0,0,0.5)'
+                backgroundColor: trimHandleColors[theme].start,
+                boxShadow: `0 0 8px ${trimHandleColors[theme].start}80, 0 0 2px rgba(0,0,0,0.8)`
               }} />
               <div style={{
                 position: 'absolute',
                 top: '0',
-                width: '12px',
-                height: '12px',
-                backgroundColor: '#fff',
-                borderRadius: '0 0 2px 2px'
-              }} />
+                width: '16px',
+                height: '20px',
+                backgroundColor: trimHandleColors[theme].start,
+                borderRadius: '0 0 4px 4px',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.5)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <span style={{ fontSize: '10px', color: trimHandleColors[theme].startText, fontWeight: 'bold' }}>◀</span>
+              </div>
               <div style={{
                 position: 'absolute',
                 bottom: '0',
-                width: '12px',
-                height: '12px',
-                backgroundColor: '#fff',
-                borderRadius: '2px 2px 0 0'
-              }} />
+                width: '16px',
+                height: '20px',
+                backgroundColor: trimHandleColors[theme].start,
+                borderRadius: '4px 4px 0 0',
+                boxShadow: '0 -2px 6px rgba(0,0,0,0.5)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <span style={{ fontSize: '10px', color: trimHandleColors[theme].startText, fontWeight: 'bold' }}>◀</span>
+              </div>
             </div>
 
             {/* End Handle */}
@@ -392,8 +414,8 @@ export const Waveform: React.FC<WaveformProps> = ({
                 top: 0,
                 height: `${100 * scale}%`,
                 left: `${endPercent}%`,
-                width: '10px',
-                marginLeft: '-5px',
+                width: '16px',
+                marginLeft: '-8px',
                 cursor: 'ew-resize',
                 zIndex: 10,
                 display: 'flex',
@@ -403,27 +425,39 @@ export const Waveform: React.FC<WaveformProps> = ({
               }}
             >
               <div style={{
-                width: '2px',
+                width: '3px',
                 height: '100%',
-                backgroundColor: '#fff',
-                boxShadow: '0 0 4px rgba(0,0,0,0.5)'
+                backgroundColor: trimHandleColors[theme].end,
+                boxShadow: `0 0 8px ${trimHandleColors[theme].end}80, 0 0 2px rgba(0,0,0,0.8)`
               }} />
               <div style={{
                 position: 'absolute',
                 top: '0',
-                width: '12px',
-                height: '12px',
-                backgroundColor: '#fff',
-                borderRadius: '0 0 2px 2px'
-              }} />
+                width: '16px',
+                height: '20px',
+                backgroundColor: trimHandleColors[theme].end,
+                borderRadius: '0 0 4px 4px',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.5)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <span style={{ fontSize: '10px', color: trimHandleColors[theme].endText, fontWeight: 'bold' }}>▶</span>
+              </div>
               <div style={{
                 position: 'absolute',
                 bottom: '0',
-                width: '12px',
-                height: '12px',
-                backgroundColor: '#fff',
-                borderRadius: '2px 2px 0 0'
-              }} />
+                width: '16px',
+                height: '20px',
+                backgroundColor: trimHandleColors[theme].end,
+                borderRadius: '4px 4px 0 0',
+                boxShadow: '0 -2px 6px rgba(0,0,0,0.5)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <span style={{ fontSize: '10px', color: trimHandleColors[theme].endText, fontWeight: 'bold' }}>▶</span>
+              </div>
             </div>
           </>
         )}

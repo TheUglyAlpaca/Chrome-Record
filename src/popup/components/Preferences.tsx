@@ -182,6 +182,10 @@ export const Preferences: React.FC<PreferencesProps> = ({ onClose }) => {
             console.error(`Error converting recording ${metadata.id}:`, error);
           }
         }
+
+        // Force a preference change to trigger RecentRecordings to reload after all conversions complete
+        // This ensures the UI updates to show the correct channel mode icons
+        savePreferences(undefined, undefined, newChannelMode);
       } catch (error) {
         console.error('Error updating recordings channel mode:', error);
       }
