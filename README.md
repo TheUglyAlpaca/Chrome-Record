@@ -11,7 +11,7 @@ A Chrome extension for recording browser audio output with waveform visualizatio
       </td>
       <td width="50%" align="center">
         <img src="./Screenshot%202025-12-25%20at%206.14.13%E2%80%AFPM.png" width="350" alt="Recent Recordings View"><br>
-        <em>Recordings View (Theme 2)</em>
+        <em>Recording View (Theme 2)</em>
       </td>
     </tr>
   </table>
