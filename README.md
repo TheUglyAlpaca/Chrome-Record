@@ -2,9 +2,20 @@
 
 A Chrome extension for recording browser audio output with waveform visualization, playback controls, format conversion, and surgical sound isolation.
 
-![Extension Screenshot - Recording View](./Screenshot%202025-12-25%20at%206.13.47%E2%80%AFPM.png)
-
-![Extension Screenshot - Recent Recordings View](./Screenshot%202025-12-25%20at%206.14.13%E2%80%AFPM.png)
+<div align="center">
+  <table>
+    <tr>
+      <td width="50%" align="center">
+        <img src="./Screenshot%202025-12-25%20at%206.13.47%E2%80%AFPM.png" width="350" alt="Recording View"><br>
+        <em>Recording View</em>
+      </td>
+      <td width="50%" align="center">
+        <img src="./Screenshot%202025-12-25%20at%206.14.13%E2%80%AFPM.png" width="350" alt="Recent Recordings View"><br>
+        <em>Recent Recordings View</em>
+      </td>
+    </tr>
+  </table>
+</div>
 
 ## Features
 
