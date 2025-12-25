@@ -1,6 +1,6 @@
 # Audio Splitter Chrome Extension
 
-A Chrome extension for recording browser audio output with waveform visualization, playback controls, format conversion, and surgical sound isolation.
+A Chrome extension for recording browser audio output with waveform visualization, playback controls, format conversion, and extensible audio processing.
 
 <div align="center">
   <table>
@@ -56,16 +56,10 @@ A Chrome extension for recording browser audio output with waveform visualizatio
 - **Persistent Preferences**: All settings are saved and persist across sessions.
 
 ### Recent Recordings
-- **IndexedDB Storage**: Uses IndexedDB for high-capacity storage of up to 50 recordings.
+- **IndexedDB Storage**: Uses IndexedDB for high-capacity, virtually unlimited storage of recordings.
 - **Metadata View**: See file sizes, duration, timestamps, and channel modes (mono/stereo) at a glance.
 - **Auto-Update**: Recordings list updates automatically when preferences (like format) change.
 - **Quick Access**: Play, download, or delete any recording from your history.
-
-### SAM Audio Isolation (Meta SAM-Audio)
-- **Sound Isolation**: Isolate specific sounds from audio using text prompts.
-- **Text Prompting**: Describe the sound you want to isolate (e.g., "A man speaking", "Guitar playing").
-- **Residual Audio**: Option to get everything except the target sound.
-- **Local Processing**: Runs via a local Python server for privacy and performance.
 
 ### UI/UX
 - **Modern Design**: Sleek, clean interface using the Inter font.
@@ -138,7 +132,7 @@ npm run build
 - **Play/Load**: Click a recording's name or the play icon to load it into the main view.
 - **Download**: Click the download icon. It will use your current format/sample rate preferences.
 - **Delete**: Click the trash icon to permanently remove a recording.
-- **AI Processing**: Click the brain icon to send a recording to the SAM Audio processor.
+- **AI Processing**: Click the brain icon to access advanced audio processing tools (Experimental).
 
 ### Preferences
 
@@ -165,10 +159,9 @@ npm run build
   - `chrome.storage.session` - For temporary UI state.
 - **Storage**: IndexedDB (via a custom `storageManager`) for large audio data, ensuring performance even with dozens of high-quality recordings.
 
-### Storage Limits
+### Storage Capacity
 
-- **Capacity**: Maximum 50 recordings.
-- **Management**: Older recordings are automatically removed when the limit is reached.
+- **Managed Storage**: While IndexedDB allows for large amounts of data, the extension manages storage to ensure browser performance.
 - **Persistence**: Data survives browser restarts and extension updates.
 
 ### Permissions
@@ -178,37 +171,32 @@ npm run build
 - `storage` - To save recordings and preferences.
 - `activeTab` - To interact with the current active tab.
 
-## SAM Audio Integration
+## Experimental & Future Features
 
-The extension includes integration with Meta's SAM-Audio model for isolating sounds from audio recordings.
+> [!IMPORTANT]
+> The features listed below are experimental and may not be fully implemented or available on the current branch.
 
-### Setting Up SAM Audio Server
+### SAM Audio Isolation (Meta SAM-Audio)
+The extension includes a framework for integration with Meta's SAM-Audio model for isolating or removing specific sounds from recordings.
 
-1. **Install Python Dependencies:**
-   ```bash
-   cd sam_server
-   pip install -r requirements.txt
-   ```
+#### Features
+- **Text Prompting**: Describe sounds in natural language (e.g., "A man speaking", "Guitar playing").
+- **Residual Mode**: Get everything except the target sound.
+- **Local Processing**: Designed to run via a local Python server for privacy.
 
-2. **Get Model Access:**
-   - Request access to [SAM-Audio models on Hugging Face](https://huggingface.co/facebook/sam-audio-large)
-   - Once approved, authenticate:
-     ```bash
-     huggingface-cli login
-     ```
-     Enter your Hugging Face access token when prompted.
+#### Setup (Development Branch Only)
+1. **Install Python Dependencies:** `pip install -r sam_server/requirements.txt`
+2. **Model Access:** Request access to [SAM-Audio on Hugging Face](https://huggingface.co/facebook/sam-audio-large).
+3. **Start Server:** `python sam_server/server.py`
+4. **Use:** Click the "AI" tab or brain icon to process audio.
 
-3. **Start the Server:**
-   ```bash
-   python sam_server/server.py
-   ```
-   The server will run on `http://localhost:5000`.
+### Suno API Integration
+We are investigating the Suno API as a potential option for high-quality, AI-driven stem splitting and vocal/instrumental separation.
 
-4. **Use in Extension:**
-   - Record or load an audio file.
-   - Click the "AI" tab or the brain icon in history.
-   - Enter a text description of the sound to isolate (or remove).
-   - The processed audio will replace the current recording.
+### Potential Enhancements
+- Export recordings directly to file system.
+- Cloud storage integration (Google Drive, Dropbox).
+- Advanced multi-track editing.
 
 ## License
 
