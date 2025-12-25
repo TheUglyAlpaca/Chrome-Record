@@ -17,7 +17,7 @@ A Chrome extension for recording browser audio output with waveform visualizatio
     <tr>
       <td width="50%" align="center">
         <img src="./Screenshot%202025-12-25%20at%206.19.24%E2%80%AFPM.png" width="350" alt="Theme 3 View"><br>
-        <em>My Recordings Screen (Theme 3)</em>
+        <em>My Recordings Screen (Theme 2)</em>
       </td>
       <td width="50%" align="center">
         <img src="./Screenshot%202025-12-25%20at%206.19.34%E2%80%AFPM.png" width="350" alt="Theme 4 View"><br>
