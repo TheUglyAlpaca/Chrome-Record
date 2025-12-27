@@ -8,6 +8,7 @@ interface WaveformData {
 
 interface UseWaveformReturn {
   waveformData: WaveformData | null;
+  liveWaveformDataRef: React.MutableRefObject<Uint8Array | null>;
   analyzeAudio: (audioBlob: Blob) => Promise<void>;
   analyzeStream: (stream: MediaStream) => Promise<void>;
   clearWaveform: () => void;
@@ -89,15 +90,24 @@ export function useWaveform(): UseWaveformReturn {
 
       const bufferLength = analyserRef.current.frequencyBinCount;
       const dataArray = new Uint8Array(bufferLength);
+      // Reusable buffer for state updates to prevent GC pressure
+      const stateBuffer = new Uint8Array(bufferLength);
+      let frameCount = 0;
 
       const updateWaveform = () => {
         if (analyserRef.current) {
-          analyserRef.current.getByteFrequencyData(dataArray);
-          setWaveformData({
-            data: new Uint8Array(dataArray),
-            sampleRate: audioContextRef.current?.sampleRate || 44100,
-            duration: 0 // Will be updated by recording duration
-          });
+          frameCount++;
+          // Only update state every 3rd frame (20fps instead of 60fps) to reduce CPU usage
+          if (frameCount % 3 === 0) {
+            analyserRef.current.getByteFrequencyData(dataArray);
+            // Copy data to state buffer instead of creating new array
+            stateBuffer.set(dataArray);
+            setWaveformData({
+              data: stateBuffer,
+              sampleRate: audioContextRef.current?.sampleRate || 44100,
+              duration: 0 // Will be updated by recording duration
+            });
+          }
         }
         animationFrameRef.current = requestAnimationFrame(updateWaveform);
       };
@@ -118,14 +128,30 @@ export function useWaveform(): UseWaveformReturn {
     setWaveformData(null);
   }, []);
 
+  const liveWaveformDataRef = useRef<Uint8Array | null>(null);
+
   const listenForRemoteUpdates = useCallback(() => {
+    // Reusable buffer to prevent GC pressure
+    let updateBuffer: Uint8Array | null = null;
+    // Notify subscribers that new data is available (can be used to trigger a draw if loop is separate)
+    // For now, we rely on the consumer (Waveform) polling the ref in rAF loop
+
     const listener = (message: any) => {
       if (message.action === 'waveformUpdate' && message.data) {
-        setWaveformData({
-          data: new Uint8Array(message.data),
-          sampleRate: 44100, // Default for visualization
-          duration: 0
-        });
+        const data = message.data;
+
+        // Initialize or resize buffer if needed
+        if (!updateBuffer || updateBuffer.length !== data.length) {
+          updateBuffer = new Uint8Array(data.length);
+        }
+
+        // Copy data to reusable buffer
+        for (let i = 0; i < data.length; i++) {
+          updateBuffer[i] = data[i];
+        }
+
+        // Update the REF, not state - avoids React render cycle
+        liveWaveformDataRef.current = updateBuffer;
       }
     };
 
@@ -134,11 +160,13 @@ export function useWaveform(): UseWaveformReturn {
     // Return cleanup function
     return () => {
       chrome.runtime.onMessage.removeListener(listener);
+      liveWaveformDataRef.current = null;
     };
   }, []);
 
   return {
     waveformData,
+    liveWaveformDataRef, // Expose the ref
     analyzeAudio,
     analyzeStream,
     clearWaveform,

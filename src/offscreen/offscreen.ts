@@ -52,7 +52,7 @@ async function startRecording(streamId: string, data: any) {
                 data: Array.from(dataArray)
             });
         }
-    }, 50); // 20 FPS
+    }, 16); // ~60 FPS
 
     mediaRecorder = new MediaRecorder(media, { mimeType: 'audio/webm' });
     recordedChunks = [];

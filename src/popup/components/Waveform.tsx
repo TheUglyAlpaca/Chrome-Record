@@ -16,6 +16,7 @@ interface WaveformProps {
   trimStart?: number;
   trimEnd?: number;
   onTrimChange?: (start: number, end: number) => void;
+  liveDataRef?: React.MutableRefObject<Uint8Array | null>;
 }
 
 // Theme-specific trim handle colors
@@ -42,7 +43,8 @@ export const Waveform: React.FC<WaveformProps> = ({
   theme = 'dark',
   trimStart = 0,
   trimEnd = 0,
-  onTrimChange
+  onTrimChange,
+  liveDataRef
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -142,8 +144,83 @@ export const Waveform: React.FC<WaveformProps> = ({
     }
   }, [data, width, height, barColor, backgroundColor, zoom, scrollOffset, duration, getVisibleRange]);
 
-  // Smooth playback position indicator
+  // Smooth playback position indicator with cached waveform for performance
+  // Cache the rendered waveform to avoid redrawing all bars every frame
+  const cachedWaveformRef = useRef<{
+    imageData: ImageData | null;
+    dataHash: string;
+    zoom: number;
+    scrollOffset: number;
+    width: number;
+    height: number;
+  }>({ imageData: null, dataHash: '', zoom: 1, scrollOffset: 0, width: 0, height: 0 });
+  // =====================================================
+  // RECORDING ANIMATION LOOP (separate from playback logic)
+  // This runs independently when isRecording is true
+  // =====================================================
   useEffect(() => {
+    if (!isRecording) return;
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let isActive = true;
+
+    const drawFrame = () => {
+      if (!isActive) return;
+
+      // Get live data from ref
+      const currentData = liveDataRef?.current;
+
+      // Clear canvas
+      ctx.fillStyle = backgroundColor;
+      ctx.fillRect(0, 0, width, height);
+
+      if (currentData && currentData.length > 0) {
+        const barCount = Math.min(currentData.length, width);
+        const barWidth = width / barCount;
+        const maxBarHeight = height * 0.8;
+
+        ctx.fillStyle = barColor;
+        for (let i = 0; i < barCount; i++) {
+          const index = Math.floor((i / barCount) * currentData.length);
+          const value = currentData[index] || 0;
+          const barHeight = (value / 255) * maxBarHeight;
+          const x = i * barWidth;
+          // Center bars vertically: start from center minus half the bar height
+          // Add small offset to account for channel indicator at top
+          const y = height / 2 - barHeight / 2 + 12;
+          ctx.fillRect(x, y, Math.max(1, barWidth - 1), barHeight);
+        }
+      }
+
+      // Continue loop
+      animationFrameRef.current = requestAnimationFrame(drawFrame);
+    };
+
+    // Start the loop
+    drawFrame();
+
+    return () => {
+      isActive = false;
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+    };
+  }, [isRecording, liveDataRef, width, height, barColor, backgroundColor]);
+
+  // =====================================================
+  // PLAYBACK RENDERING (uses data prop, zoom, scroll, etc.)
+  // This effect is ONLY for when NOT recording
+  // =====================================================
+  useEffect(() => {
+    // Skip during recording - handled by the effect above
+    if (isRecording) return;
+
     if (duration <= 0 || !data) {
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
@@ -158,45 +235,72 @@ export const Waveform: React.FC<WaveformProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    let isActive = true;
+    // Generate a simple hash of the data for cache invalidation
+    const dataHash = data.length.toString() + '_' + (data[0] || 0) + '_' + (data[Math.floor(data.length / 2)] || 0);
 
-    const drawPosition = () => {
-      if (!isActive || !canvas || !ctx || !data) return;
+    const { startTime, endTime, visibleDuration } = getVisibleRange();
+    const startRatio = startTime / duration;
+    const endRatio = endTime / duration;
+    const dataStartIndex = Math.floor(startRatio * data.length);
+    const dataEndIndex = Math.ceil(endRatio * data.length);
+    const visibleDataLength = dataEndIndex - dataStartIndex;
 
-      const { startTime, endTime, visibleDuration } = getVisibleRange();
+    // Check if we need to redraw the waveform (data or view changed)
+    const cache = cachedWaveformRef.current;
+    const needsRedraw =
+      cache.dataHash !== dataHash ||
+      cache.zoom !== zoom ||
+      cache.scrollOffset !== scrollOffset ||
+      cache.width !== width ||
+      cache.height !== height ||
+      !cache.imageData;
 
-      // Calculate which portion of data to show
-      const startRatio = startTime / duration;
-      const endRatio = endTime / duration;
-
-      const dataStartIndex = Math.floor(startRatio * data.length);
-      const dataEndIndex = Math.ceil(endRatio * data.length);
-      const visibleDataLength = dataEndIndex - dataStartIndex;
-
-      // 1. Clear canvas
+    // PLAYBACK / STATIC Logic (uses existing zoom/scroll logic)
+    if (needsRedraw && visibleDataLength > 0) {
       ctx.fillStyle = backgroundColor;
       ctx.fillRect(0, 0, width, height);
 
-      // 2. Redraw waveform
-      if (visibleDataLength > 0) {
-        const barCount = Math.min(visibleDataLength, width);
-        const barWidth = width / barCount;
-        const maxBarHeight = height * 0.8;
+      const barCount = Math.min(visibleDataLength, width);
+      const barWidth = width / barCount;
+      const maxBarHeight = height * 0.8;
 
-        ctx.fillStyle = barColor;
-        for (let i = 0; i < barCount; i++) {
-          const dataIndex = dataStartIndex + Math.floor((i / barCount) * visibleDataLength);
-          const value = data[dataIndex] || 0;
-          const barHeight = (value / 255) * maxBarHeight;
-          const x = i * barWidth;
-          const y = (height - barHeight) / 2;
-          ctx.fillRect(x, y, Math.max(1, barWidth - 1), barHeight);
-        }
+      ctx.fillStyle = barColor;
+      for (let i = 0; i < barCount; i++) {
+        const dataIndex = dataStartIndex + Math.floor((i / barCount) * visibleDataLength);
+        const value = data[dataIndex] || 0;
+        const barHeight = (value / 255) * maxBarHeight;
+        const x = i * barWidth;
+        // Add small offset to visually center (account for channel indicator)
+        const y = (height - barHeight) / 2 + 18;
+        ctx.fillRect(x, y, Math.max(1, barWidth - 1), barHeight);
       }
 
-      // 3. Draw playhead if in visible range
-      if (currentTime >= startTime && currentTime <= endTime) {
-        const playheadX = ((currentTime - startTime) / visibleDuration) * width;
+      // Cache the result for playback performance
+      cache.imageData = ctx.getImageData(0, 0, width, height);
+      cache.dataHash = dataHash;
+      cache.zoom = zoom;
+      cache.scrollOffset = scrollOffset;
+      cache.width = width;
+      cache.height = height;
+    } else if (cache.imageData) {
+      ctx.putImageData(cache.imageData, 0, 0);
+    }
+
+    // Only run continuous animation loop during playback (for playhead)
+    let isActive = true;
+
+    const drawPlayhead = () => {
+      if (!isActive || !canvas || !ctx) return;
+
+      // Restore cached waveform
+      if (cache.imageData) {
+        ctx.putImageData(cache.imageData, 0, 0);
+      }
+
+      // Draw playhead if in visible range
+      const { startTime: st, endTime: et, visibleDuration: vd } = getVisibleRange();
+      if (currentTime >= st && currentTime <= et) {
+        const playheadX = ((currentTime - st) / vd) * width;
         ctx.strokeStyle = '#888';
         ctx.lineWidth = 2;
         ctx.beginPath();
@@ -208,11 +312,11 @@ export const Waveform: React.FC<WaveformProps> = ({
       }
 
       if (isActive && duration > 0) {
-        animationFrameRef.current = requestAnimationFrame(drawPosition);
+        animationFrameRef.current = requestAnimationFrame(drawPlayhead);
       }
     };
 
-    animationFrameRef.current = requestAnimationFrame(drawPosition);
+    animationFrameRef.current = requestAnimationFrame(drawPlayhead);
 
     return () => {
       isActive = false;
@@ -221,7 +325,7 @@ export const Waveform: React.FC<WaveformProps> = ({
         animationFrameRef.current = null;
       }
     };
-  }, [currentTime, duration, width, height, data, zoom, scrollOffset, backgroundColor, barColor, getVisibleRange]);
+  }, [currentTime, duration, width, height, data, zoom, scrollOffset, backgroundColor, barColor, getVisibleRange, isRecording]);
 
   // Handle click for seeking
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {

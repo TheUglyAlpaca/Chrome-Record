@@ -503,6 +503,12 @@ body.rainbow-mode .header .icon-button svg {
   background-color: var(--bg-hover);
 }
 
+.control-button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 .play-button {
   background-color: var(--bg-hover);
   width: 44px;

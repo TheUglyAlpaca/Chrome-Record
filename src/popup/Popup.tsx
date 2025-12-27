@@ -62,7 +62,8 @@ const Popup: React.FC = () => {
     analyzeAudio,
     analyzeStream,
     clearWaveform,
-    listenForRemoteUpdates
+    listenForRemoteUpdates,
+    liveWaveformDataRef // Get the live data ref
   } = useWaveform();
 
   // Load all initial data in a single batch to reduce startup time
@@ -962,6 +963,7 @@ const Popup: React.FC = () => {
               trimStart={trimStart}
               trimEnd={trimEnd}
               onTrimChange={handleTrimChange}
+              liveDataRef={liveWaveformDataRef} // Pass the ref for 60fps updates
             />
           </div>
 
@@ -987,6 +989,7 @@ const Popup: React.FC = () => {
             onReset={handleReset}
             isPlaying={isPlaying}
             isLooping={isLooping}
+            isRecording={isRecording}
             zoom={zoom}
           />
 

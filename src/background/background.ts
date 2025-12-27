@@ -93,14 +93,16 @@ chrome.runtime.onMessage.addListener((message: Message, sender: chrome.runtime.M
       });
       const hasOffscreen = contexts.length > 0;
 
-      chrome.storage.local.get(['recordingStartTime', 'recordingChunks'], (result) => {
+      chrome.storage.local.get(['recordingStartTime'], (result) => {
         // If offscreen exists, we are definitely recording
         const isRecordingActive = hasOffscreen || (isRecording && !!result.recordingStartTime);
 
         sendResponse({
           success: true,
           isRecording: isRecordingActive,
-          hasRecording: recordingChunks.length > 0 || (result.recordingChunks && result.recordingChunks.length > 0)
+          // We don't need to check chunks content here - it's expensive to load
+          // Just rely on recordingChunks.length (in memory) or assume hasRecording if active
+          hasRecording: recordingChunks.length > 0 || isRecordingActive
         });
       });
     })();
@@ -193,21 +195,14 @@ chrome.runtime.onMessage.addListener((message: Message, sender: chrome.runtime.M
   }
 
   if (message.action === 'addRecordingChunk') {
-    // Add chunk from popup recorder
+    // Add chunk from offscreen recorder - ONLY keep in memory
+    // Storage writes were causing O(n²) slowdown: every 100ms we were
+    // reading, converting, and rewriting ALL chunks. After 5 mins that's
+    // 3000 chunks being processed on every single message.
+    // Now we only write to storage when recording stops.
     if (message.chunk) {
       const blob = new Blob([new Uint8Array(message.chunk)], { type: 'audio/webm' });
       recordingChunks.push(blob);
-      // Store in storage for persistence
-      chrome.storage.local.get(['recordingChunks'], async (result) => {
-        const existingChunks = result.recordingChunks || [];
-        const chunksArray = await Promise.all(
-          recordingChunks.map(async (chunk) => {
-            const arrayBuffer = await chunk.arrayBuffer();
-            return Array.from(new Uint8Array(arrayBuffer));
-          })
-        );
-        chrome.storage.local.set({ recordingChunks: chunksArray });
-      });
     }
     sendResponse({ success: true });
     return true;
@@ -354,10 +349,7 @@ async function handleStopCapture(): Promise<Blob | null> {
         type: 'STOP_RECORDING',
         target: 'offscreen'
       }, async (response) => {
-        // Wait specifically for chunks to be processed and saved to storage
-        // The offscreen document pushes chunks to storage array via 'addRecordingChunk' message
-
-        // Give a little time for the last chunks to be processed
+        // Wait for the last chunks to be processed
         await new Promise(r => setTimeout(r, 500));
 
         isRecording = false;
@@ -365,26 +357,29 @@ async function handleStopCapture(): Promise<Blob | null> {
         // Close offscreen document
         chrome.offscreen.closeDocument();
 
-        // Reconstruct blob from storage
-        chrome.storage.local.get(['recordingChunks', 'preferences'], (result) => {
-          const chunks = result.recordingChunks || [];
-          if (chunks.length > 0) {
-            const blobs = chunks.map((chunk: number[]) => new Blob([new Uint8Array(chunk)], { type: 'audio/webm' }));
-            const blob = new Blob(blobs, { type: 'audio/webm' });
-            resolve(blob);
-          } else {
-            resolve(null);
-          }
+        // Write chunks to storage ONCE (not continuously during recording)
+        // This is efficient: we only serialize everything once at the end
+        if (recordingChunks.length > 0) {
+          const chunksArray = await Promise.all(
+            recordingChunks.map(async (chunk) => {
+              const arrayBuffer = await chunk.arrayBuffer();
+              return Array.from(new Uint8Array(arrayBuffer));
+            })
+          );
+          await chrome.storage.local.set({ recordingChunks: chunksArray });
+          console.log('Wrote', chunksArray.length, 'chunks to storage on stop');
+        }
 
-          // Cleanup storage
-          chrome.storage.local.remove([
-            'recordingStreamId',
-            'recordingTabId',
-            'recordingStartTime',
-            'recordingChunks'
-          ]);
-          recordingChunks = [];
-        });
+        // DON'T reconstruct blob here - let popup read from storage directly
+        resolve(null);
+
+        // Cleanup metadata but KEEP chunks for popup to read
+        chrome.storage.local.remove([
+          'recordingStreamId',
+          'recordingTabId',
+          'recordingStartTime'
+        ]);
+        recordingChunks = [];
       });
     });
   }

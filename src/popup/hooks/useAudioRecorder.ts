@@ -53,11 +53,16 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
             chrome.storage.local.set({ recordingStartTime: Date.now() });
           }
 
-          // Start duration timer for background recording
+          // Clear any existing interval first to prevent duplicates when popup reopens
+          if (durationIntervalRef.current) {
+            clearInterval(durationIntervalRef.current);
+          }
+
+          // Start duration timer for background recording (100ms = 10 updates/sec for smooth display)
           durationIntervalRef.current = window.setInterval(() => {
             const elapsed = (Date.now() - startTimeRef.current) / 1000;
             setDuration(elapsed);
-          }, 10);
+          }, 100);
 
           // If we have a streamId, try to reconnect to the stream for visualization
           if (result.recordingStreamId) {
@@ -66,13 +71,11 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
           }
         });
 
-        // Try to get existing recording data (partial recording)
-        const dataResponse = await chrome.runtime.sendMessage({ action: 'getRecordingData' });
-        if (dataResponse.success && dataResponse.hasData) {
-          const audioArray = new Uint8Array(dataResponse.audioBlob);
-          const blob = new Blob([audioArray], { type: 'audio/webm' });
-          setAudioBlob(blob);
-        }
+        // Don't fetch the partial recording data while still recording!
+        // 1. It causes massive lag (fetching/decoding growing blob)
+        // 2. It's unnecessary (we only show live waveform)
+        // 3. It causes "Unable to decode" errors due to race conditions
+        // We only fetch the full blob when recording eventually STOPS.
       } else {
         // Not recording - clear any stale state
         chrome.storage.local.remove(['recordingStreamId', 'recordingTabId', 'recordingStartTime']);
@@ -157,11 +160,11 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
         setDuration(0);
         chrome.storage.local.set({ recordingStartTime: startTime });
 
-        // Start duration timer
+        // Start duration timer (100ms = 10 updates/sec for smooth display)
         durationIntervalRef.current = window.setInterval(() => {
           const elapsed = (Date.now() - startTimeRef.current) / 1000;
           setDuration(elapsed);
-        }, 10);
+        }, 100);
 
         setIsRecording(true);
         setIsPaused(false);
@@ -222,7 +225,7 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
           durationIntervalRef.current = window.setInterval(() => {
             const elapsed = (Date.now() - startTimeRef.current) / 1000;
             setDuration(elapsed);
-          }, 10);
+          }, 100);
 
           setIsRecording(true);
           setIsPaused(false);
@@ -260,10 +263,33 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
 
       let finalBlob: Blob | null = null;
 
-      if (response && response.success && response.audioBlob && response.audioBlob.length > 0) {
+      // Check storage directly for chunks first (avoid IPC transfer)
+      // Background script leaves chunks in storage for us to pick up
+      const storageResult = await chrome.storage.local.get(['recordingChunks', 'preferences']);
+
+      if (storageResult.recordingChunks && storageResult.recordingChunks.length > 0) {
+        console.log('Reading recording chunks directly from storage:', storageResult.recordingChunks.length);
+
+        // Determine mime type
+        const format = storageResult.preferences?.format || 'webm';
+        let mimeType = 'audio/webm';
+        if (format === 'ogg') mimeType = 'audio/ogg';
+
+        // Reconstruct blob locally
+        const chunks = storageResult.recordingChunks;
+        const blobs = chunks.map((chunk: number[]) => new Blob([new Uint8Array(chunk)], { type: mimeType }));
+        finalBlob = new Blob(blobs, { type: mimeType });
+        console.log('Reconstructed blob locally, size:', finalBlob.size);
+
+        // Cleanup chunks from storage now that we have them
+        chrome.storage.local.remove(['recordingChunks']);
+
+        setAudioBlob(finalBlob);
+      } else if (response && response.success && response.audioBlob && response.audioBlob.length > 0) {
+        // Fallback to IPC payload if storage failed but response has it (legacy path)
         const audioArray = new Uint8Array(response.audioBlob);
         finalBlob = new Blob([audioArray], { type: 'audio/webm' });
-        console.log('Got blob from background, size:', finalBlob.size);
+        console.log('Got blob from background response, size:', finalBlob.size);
         setAudioBlob(finalBlob);
       } else if (chunksRef.current.length > 0) {
         // If no background blob, use local chunks
@@ -271,16 +297,7 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
         console.log('Got blob from local chunks, size:', finalBlob.size);
         setAudioBlob(finalBlob);
       } else {
-        // Try to get final blob from background chunks
-        const dataResponse = await chrome.runtime.sendMessage({ action: 'getRecordingData' });
-        if (dataResponse && dataResponse.success && dataResponse.hasData && dataResponse.audioBlob && dataResponse.audioBlob.length > 0) {
-          const audioArray = new Uint8Array(dataResponse.audioBlob);
-          finalBlob = new Blob([audioArray], { type: 'audio/webm' });
-          console.log('Got blob from background data, size:', finalBlob.size);
-          setAudioBlob(finalBlob);
-        } else {
-          console.warn('No audio blob available after stopping recording');
-        }
+        console.warn('No audio blob available after stopping recording');
       }
 
       // Clear chunks after creating blob
@@ -347,7 +364,7 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
       durationIntervalRef.current = window.setInterval(() => {
         const elapsed = (Date.now() - startTimeRef.current) / 1000;
         setDuration(elapsed);
-      }, 10);
+      }, 100);
     }
   }, [isRecording, isPaused, duration]);
 
