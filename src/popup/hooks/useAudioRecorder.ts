@@ -89,10 +89,12 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
       const format = prefsResult.preferences?.format || 'webm';
       const mimeType = getMimeTypeForFormat(format);
 
-      // CRITICAL: First, ensure any previous recording is fully stopped and cleaned up
-      // This must happen before attempting to start a new recording
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((track: MediaStreamTrack) => track.stop());
+      // Check if there's a previous stream that needs cleanup
+      const hadPreviousStream = !!streamRef.current;
+
+      // Clean up any previous recording
+      if (hadPreviousStream) {
+        streamRef.current!.getTracks().forEach((track: MediaStreamTrack) => track.stop());
         streamRef.current = null;
       }
 
@@ -103,20 +105,14 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
         console.warn('Error clearing previous recording:', error);
       }
 
-      // Wait longer to ensure previous stream is fully released
-      // Chrome's tabCapture API needs time to fully release the stream
-      await new Promise(resolve => setTimeout(resolve, 800));
+      // Only wait for stream release if there was a previous recording
+      // Reduced from 800ms to 400ms for faster startup
+      if (hadPreviousStream) {
+        await new Promise(resolve => setTimeout(resolve, 400));
+      }
 
       // Clear any previous recording state from storage
       await chrome.storage.local.remove(['recordingStreamId', 'recordingTabId', 'recordingStartTime', 'recordingChunks']);
-
-      // Double-check that storage is cleared
-      const checkStorage = await chrome.storage.local.get(['recordingStreamId', 'recordingTabId']);
-      if (checkStorage.recordingStreamId || checkStorage.recordingTabId) {
-        // If still present, wait a bit more and clear again
-        await new Promise(resolve => setTimeout(resolve, 500));
-        await chrome.storage.local.remove(['recordingStreamId', 'recordingTabId', 'recordingStartTime', 'recordingChunks']);
-      }
 
       // Get current active tab
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
