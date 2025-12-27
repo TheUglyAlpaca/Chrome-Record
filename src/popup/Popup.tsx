@@ -31,6 +31,7 @@ const Popup: React.FC = () => {
   const [startTime, setStartTime] = useState(0);
   const [trimStart, setTrimStart] = useState(0);
   const [trimEnd, setTrimEnd] = useState(0);
+  const [loadedAudioDuration, setLoadedAudioDuration] = useState(0);
   const [theme, setTheme] = useState<'light' | 'dark' | 'midnight' | 'forest' | 'rainbow'>('light');
   const [preferences, setPreferences] = useState<{
     format?: string;
@@ -123,6 +124,13 @@ const Popup: React.FC = () => {
         if (savedState.currentRecordingChannelMode) {
           setCurrentRecordingChannelMode(savedState.currentRecordingChannelMode);
         }
+        // Restore trim values if they were saved
+        if (savedState.trimStart !== undefined) {
+          setTrimStart(savedState.trimStart);
+        }
+        if (savedState.trimEnd !== undefined && savedState.trimEnd > 0) {
+          setTrimEnd(savedState.trimEnd);
+        }
       }
     });
 
@@ -156,11 +164,14 @@ const Popup: React.FC = () => {
           recordingName,
           recordingTimestamp: recordingTimestamp.toISOString(),
           currentRecordingId,
-          currentRecordingChannelMode
+          currentRecordingChannelMode,
+          // Only persist trim values when NOT recording to avoid stale values
+          trimStart: isRecording ? 0 : trimStart,
+          trimEnd: isRecording ? 0 : trimEnd
         }
       });
     }
-  }, [recordingName, recordingTimestamp, currentRecordingId, currentRecordingChannelMode]);
+  }, [recordingName, recordingTimestamp, currentRecordingId, currentRecordingChannelMode, trimStart, trimEnd, isRecording]);
 
   // Update recording name and timestamp when recording starts
   useEffect(() => {
@@ -235,12 +246,14 @@ const Popup: React.FC = () => {
 
           // Set up event listeners
           audio.addEventListener('loadedmetadata', () => {
-            // Audio is ready - immediately set current time to show playhead
+            // Audio is ready - capture the final duration in state
             const audioDuration = audio.duration;
             const finalDuration = (audioDuration && isFinite(audioDuration)) ? audioDuration : recordingDuration;
 
             console.log('Audio loaded, element duration:', audioDuration, 'fallback duration:', recordingDuration, 'final duration:', finalDuration);
 
+            // Capture duration in state so it doesn't change during playback
+            setLoadedAudioDuration(finalDuration || 0);
             setCurrentPlayTime(audio.currentTime || 0);
             setTrimStart(0);
             // Ensure trimEnd is a valid number
@@ -262,11 +275,11 @@ const Popup: React.FC = () => {
           // Load the audio
           audio.load();
 
-          // Reset play time to 0 when new recording is loaded
+          // Reset play state - trim values will be set by loadedmetadata listener
           setCurrentPlayTime(0);
           setStartTime(0);
           setTrimStart(0);
-          setTrimEnd(0);
+          // Note: Don't reset trimEnd here - it will be set properly by loadedmetadata
         } catch (error) {
           if (!cancelled) {
             console.error('Error analyzing audio:', error);
@@ -743,9 +756,9 @@ const Popup: React.FC = () => {
   };
 
   // Calculate effective display values respecting trim
-  // Derived values for UI display - handle Infinity duration for recorded blobs
-  const totalDuration = (audioRef.current && isFinite(audioRef.current.duration))
-    ? audioRef.current.duration
+  // Derived values for UI display - use loadedAudioDuration when available (prevents duration changing during playback)
+  const totalDuration = loadedAudioDuration > 0
+    ? loadedAudioDuration
     : (isRecording ? recordingDuration : (recordingDuration || 0));
 
   const effectiveStart = trimStart > 0 ? trimStart : 0;
@@ -912,7 +925,7 @@ const Popup: React.FC = () => {
               }
               theme={theme}
               trimStart={trimStart}
-              trimEnd={trimEnd || (isRecording ? recordingDuration : totalDuration)}
+              trimEnd={trimEnd}
               onTrimChange={handleTrimChange}
             />
           </div>

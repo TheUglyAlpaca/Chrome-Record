@@ -315,17 +315,28 @@ export const Waveform: React.FC<WaveformProps> = ({
 
   // Calculate handle positions
   const safeDuration = (duration > 0 && isFinite(duration)) ? duration : 0;
-  const startHandlePercent = safeDuration > 0 ? getXPercentFromTime(trimStart) : 0;
-  const endHandlePercent = safeDuration > 0 ? getXPercentFromTime(trimEnd || duration) : 100;
+
+  // During recording, always lock handles at edges (can't trim while recording)
+  // After recording, lock at end if trimEnd is 0 or at/beyond duration
+  const isAtEnd = isRecording || trimEnd <= 0 || trimEnd >= duration;
+  const isAtStart = isRecording || trimStart <= 0;
+
+  const startHandlePercent = isAtStart ? 0 : (safeDuration > 0 ? getXPercentFromTime(trimStart) : 0);
+  const endHandlePercent = isAtEnd ? 100 : (safeDuration > 0 ? getXPercentFromTime(trimEnd) : 100);
+
+  // Debug: trace post-recording drift
+  console.log('Post-recording debug:', { isRecording, trimEnd, duration, isAtEnd, endHandlePercent });
+
 
   // Check if handles are in visible range
   const { startTime: visibleStart, endTime: visibleEnd } = getVisibleRange();
   const isStartHandleVisible = trimStart >= visibleStart && trimStart <= visibleEnd;
-  const isEndHandleVisible = (trimEnd || duration) >= visibleStart && (trimEnd || duration) <= visibleEnd;
+  const effectiveTrimEnd = isAtEnd ? duration : trimEnd;
+  const isEndHandleVisible = effectiveTrimEnd >= visibleStart && effectiveTrimEnd <= visibleEnd;
 
   // Calculate dim overlay positions (for visible portion)
-  const trimStartPercent = safeDuration > 0 ? Math.max(0, getXPercentFromTime(trimStart)) : 0;
-  const trimEndPercent = safeDuration > 0 ? Math.min(100, getXPercentFromTime(trimEnd || duration)) : 100;
+  const trimStartPercent = isAtStart ? 0 : (safeDuration > 0 ? Math.max(0, getXPercentFromTime(trimStart)) : 0);
+  const trimEndPercent = isAtEnd ? 100 : (safeDuration > 0 ? Math.min(100, getXPercentFromTime(trimEnd)) : 100);
 
   return (
     <div
