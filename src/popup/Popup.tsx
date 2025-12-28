@@ -32,6 +32,7 @@ const Popup: React.FC = () => {
   const [trimStart, setTrimStart] = useState(0);
   const [trimEnd, setTrimEnd] = useState(0);
   const [loadedAudioDuration, setLoadedAudioDuration] = useState(0);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark' | 'midnight' | 'forest' | 'rainbow'>('light');
   const [preferences, setPreferences] = useState<{
     format?: string;
@@ -346,41 +347,49 @@ const Popup: React.FC = () => {
 
   const handleRecordClick = async () => {
     if (isRecording) {
-      const stoppedBlob = await stopRecording();
-      // Save recording to Recent Recordings after stopping
-      // Use the current recordingName (which may have been edited)
-      // Check for valid blob - at least 1KB to be considered valid
-      if (stoppedBlob && stoppedBlob.size > 1024) {
-        console.log('Recording stopped, blob size:', stoppedBlob.size);
-        const nameToSave = recordingName || `recording ${formatDate(new Date())}`;
-        console.log('Saving recording with name:', nameToSave);
+      // Show processing state
+      setIsProcessing(true);
 
-        try {
-          await saveRecordingToHistory(stoppedBlob, nameToSave);
-          console.log('Recording saved to history successfully!');
-        } catch (error: any) {
-          console.error('Error saving recording to history:', error);
-          const errorMessage = error?.message || 'Unknown error occurred';
+      try {
+        const stoppedBlob = await stopRecording();
+        // Save recording to Recent Recordings after stopping
+        // Use the current recordingName (which may have been edited)
+        // Check for valid blob - at least 1KB to be considered valid
+        if (stoppedBlob && stoppedBlob.size > 1024) {
+          console.log('Recording stopped, blob size:', stoppedBlob.size);
+          const nameToSave = recordingName || `recording ${formatDate(new Date())}`;
+          console.log('Saving recording with name:', nameToSave);
 
-          // Provide user-friendly message for quota exceeded
-          if (errorMessage.includes('quota') || errorMessage.includes('Quota')) {
-            alert('Storage limit reached. The oldest recordings have been removed to make space. Your new recording has been saved.');
-          } else {
-            alert(`Recording stopped but failed to save to recent recordings: ${errorMessage}`);
+          try {
+            await saveRecordingToHistory(stoppedBlob, nameToSave);
+            console.log('Recording saved to history successfully!');
+          } catch (error: any) {
+            console.error('Error saving recording to history:', error);
+            const errorMessage = error?.message || 'Unknown error occurred';
+
+            // Provide user-friendly message for quota exceeded
+            if (errorMessage.includes('quota') || errorMessage.includes('Quota')) {
+              alert('Storage limit reached. The oldest recordings have been removed to make space. Your new recording has been saved.');
+            } else {
+              alert(`Recording stopped but failed to save to recent recordings: ${errorMessage}`);
+            }
           }
-        }
-      } else {
-        console.warn('No valid blob to save after stopping recording. Blob:', stoppedBlob);
-        if (stoppedBlob) {
-          console.warn('Blob exists but size is too small:', stoppedBlob.size, 'bytes (minimum 1KB required)');
-          if (stoppedBlob.size > 0) {
-            alert(`Recording captured but audio data is very small (${stoppedBlob.size} bytes). The recording may be corrupted or too short.`);
+        } else {
+          console.warn('No valid blob to save after stopping recording. Blob:', stoppedBlob);
+          if (stoppedBlob) {
+            console.warn('Blob exists but size is too small:', stoppedBlob.size, 'bytes (minimum 1KB required)');
+            if (stoppedBlob.size > 0) {
+              alert(`Recording captured but audio data is very small (${stoppedBlob.size} bytes). The recording may be corrupted or too short.`);
+            } else {
+              alert('Recording stopped but no audio data was captured. Please try recording again.');
+            }
           } else {
             alert('Recording stopped but no audio data was captured. Please try recording again.');
           }
-        } else {
-          alert('Recording stopped but no audio data was captured. Please try recording again.');
         }
+      } finally {
+        // Always hide processing state when done
+        setIsProcessing(false);
       }
     } else {
       // Clear previous recording state before starting new one
@@ -895,6 +904,7 @@ const Popup: React.FC = () => {
           onClick={() => setActiveTab('recording')}
         >
           Recording
+          {isRecording && <span className="recording-indicator"></span>}
         </button>
         <button
           className={`tab ${activeTab === 'recent' ? 'active' : ''}`}
@@ -963,7 +973,8 @@ const Popup: React.FC = () => {
               trimStart={trimStart}
               trimEnd={trimEnd}
               onTrimChange={handleTrimChange}
-              liveDataRef={liveWaveformDataRef} // Pass the ref for 60fps updates
+              liveDataRef={liveWaveformDataRef}
+              isProcessing={isProcessing}
             />
           </div>
 
