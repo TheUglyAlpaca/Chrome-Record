@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Sample - Audio Recorder",
+  "name": "Chrome Recorder",
   "version": "1.0.0",
-  "description": "Record browser audio and manipulate it with Meta SAM audio isolation",
+  "description": "Record audio from your browser tabs with high quality output",
   "permissions": [
     "desktopCapture",
     "tabCapture",
