@@ -1,4 +1,4 @@
-# Audio Splitter Chrome Extension
+# Chrome Record - Chrome Extension
 
 A Chrome extension for recording browser audio output with waveform visualization, playback controls, format conversion, and extensible audio processing.
 
