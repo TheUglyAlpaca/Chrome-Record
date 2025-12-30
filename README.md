@@ -72,33 +72,46 @@ A Chrome extension for recording browser audio output with waveform visualizatio
 
 ## Installation
 
-### Prerequisites
-- Node.js (v14 or higher)
-- npm or yarn
+Choose one of the following options to install the extension:
 
-### Build Instructions
+### Option A: Quick Install (Version 1.0.0)
+Ideal if you want to get started quickly without building from source.
 
-1. Clone the repository:
-```bash
-git clone <repository-url>
-cd AudioSplitterChromeExtension
-```
+1. Download or locate the `dist.zip` file in this repository.
+2. Open Chrome and navigate to `chrome://extensions/`.
+3. Enable **Developer mode** (toggle in the top right corner).
+4. Drag and drop the `dist.zip` file directly into the extensions page.
 
-2. Install dependencies:
-```bash
-npm install
-```
+> [!NOTE]
+> This installs version 1.0.0. It may not include the most recent features and improvements present in the latest source code.
 
-3. Build the extension:
-```bash
-npm run build
-```
+---
 
-4. Load the extension in Chrome:
-   - Open Chrome and navigate to `chrome://extensions/`
-   - Enable "Developer mode" (toggle in top right)
-   - Click "Load unpacked"
-   - Select the `dist` directory from this project
+### Option B: Build from Source (Latest Version)
+Use this option to get the very latest improvements and features.
+
+#### Prerequisites
+- **Node.js**: v14 or higher
+- **Package Manager**: npm or yarn
+
+#### Instructions
+1. **Clone the repository**:
+   ```bash
+   git clone <repository-url>
+   cd AudioSplitterChromeExtension
+   ```
+2. **Install dependencies**:
+   ```bash
+   npm install
+   ```
+3. **Build the extension**:
+   ```bash
+   npm run build
+   ```
+4. **Load in Chrome**:
+   - Open Chrome and navigate to `chrome://extensions/`.
+   - Enable **Developer mode**.
+   - Click **Load unpacked** and select the `dist` directory generated in the previous step.
 
 ## Usage
 
