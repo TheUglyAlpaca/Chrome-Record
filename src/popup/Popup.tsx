@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
 import { useAudioRecorder } from './hooks/useAudioRecorder';
 import { useWaveform } from './hooks/useWaveform';
@@ -648,13 +648,17 @@ const Popup: React.FC = () => {
     }
   };
 
-  const handleZoomIn = () => {
-    setZoom(Math.min(zoom * 2, 8));
-  };
+  const handleZoomIn = useCallback(() => {
+    setZoom(z => Math.min(z * 2, 8));
+  }, []);
 
-  const handleZoomOut = () => {
-    setZoom(Math.max(zoom / 2, 1));
-  };
+  const handleZoomOut = useCallback(() => {
+    setZoom(z => Math.max(z / 2, 1));
+  }, []);
+
+  const handleZoomChange = useCallback((multiplier: number) => {
+    setZoom(z => Math.max(1, Math.min(10, z * multiplier)));
+  }, []);
 
   const handleTrimChange = (start: number, end: number) => {
     setTrimStart(start);
@@ -998,6 +1002,7 @@ const Popup: React.FC = () => {
               onTrimChange={handleTrimChange}
               liveDataRef={liveWaveformDataRef}
               isProcessing={isProcessing}
+              onZoomChange={handleZoomChange}
             />
           </div>
 

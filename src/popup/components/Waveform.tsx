@@ -18,6 +18,7 @@ interface WaveformProps {
   onTrimChange?: (start: number, end: number) => void;
   liveDataRef?: React.MutableRefObject<Uint8Array | null>;
   isProcessing?: boolean;
+  onZoomChange?: (multiplier: number) => void;
 }
 
 // Theme-specific trim handle colors
@@ -46,7 +47,8 @@ export const Waveform: React.FC<WaveformProps> = ({
   trimEnd = 0,
   onTrimChange,
   liveDataRef,
-  isProcessing = false
+  isProcessing = false,
+  onZoomChange
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -414,15 +416,32 @@ export const Waveform: React.FC<WaveformProps> = ({
     };
   }, [isPanning, zoom]);
 
-  // Handle wheel for scrolling
+  // Handle wheel for scrolling and zooming
   const handleWheel = useCallback((e: React.WheelEvent) => {
-    if (zoom <= 1) return;
-    e.preventDefault();
-    const delta = e.deltaX !== 0 ? e.deltaX : e.deltaY;
-    const scrollAmount = (delta / 500) / zoom;
-    const maxOffset = Math.max(0, 1 - 1 / zoom);
-    setScrollOffset(prev => Math.max(0, Math.min(maxOffset, prev + scrollAmount)));
-  }, [zoom]);
+    const isPinch = e.ctrlKey;
+    const isVerticalDominant = Math.abs(e.deltaY) > Math.abs(e.deltaX);
+    const isHorizontalDominant = Math.abs(e.deltaX) >= Math.abs(e.deltaY);
+
+    // Zoom Handling (Pinch OR Vertical Scroll)
+    if (isPinch || isVerticalDominant) {
+      e.preventDefault();
+
+      // Calculate multiplier based on deltaY
+      // Using a small factor (1.0015) for fine-grained continuous control
+      const multiplier = Math.pow(1.0015, -e.deltaY);
+      onZoomChange?.(multiplier);
+      return;
+    }
+
+    // Scroll/Pan Handling (Horizontal Dominant)
+    if (isHorizontalDominant && zoom > 1) {
+      e.preventDefault();
+      const delta = e.deltaX !== 0 ? e.deltaX : e.deltaY;
+      const scrollAmount = (delta / 500) / zoom;
+      const maxOffset = Math.max(0, 1 - 1 / zoom);
+      setScrollOffset(prev => Math.max(0, Math.min(maxOffset, prev + scrollAmount)));
+    }
+  }, [zoom, onZoomChange]);
 
   // Calculate handle positions
   const safeDuration = (duration > 0 && isFinite(duration)) ? duration : 0;
