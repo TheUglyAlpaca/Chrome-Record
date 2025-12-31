@@ -1009,7 +1009,7 @@ const Popup: React.FC = () => {
           {/* Show play controls only when not recording and have audio */}
           {!isRecording && audioBlob && (
             <div className="playback-info">
-              <span className="playback-hint">Click waveform to seek • Use controls to play</span>
+              <span className="playback-hint">Click to Seek • Scroll to Pan & Zoom</span>
             </div>
           )}
 
