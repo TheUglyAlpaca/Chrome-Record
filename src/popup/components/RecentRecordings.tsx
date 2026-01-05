@@ -226,7 +226,7 @@ export const RecentRecordings: React.FC<RecentRecordingsProps> = ({ onSelectReco
       const url = URL.createObjectURL(zipBlob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `chrome-recordings-${new Date().toISOString().split('T')[0]}.zip`;
+      a.download = `chrome-recorder-${new Date().toISOString().split('T')[0]}.zip`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
