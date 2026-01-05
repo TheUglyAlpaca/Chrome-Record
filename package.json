@@ -18,12 +18,14 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "jszip": "^3.10.1",
     "lamejs": "^1.2.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.268",
+    "@types/jszip": "^3.4.0",
     "@types/node": "^25.0.3",
     "@types/react": "^18.2.66",
     "@types/react-dom": "^18.2.22",

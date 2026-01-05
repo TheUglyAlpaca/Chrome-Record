@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import JSZip from 'jszip';
 import { convertAudioFormat } from '../utils/audioConverter';
 import { getFileExtension } from '../utils/formatUtils';
 import { getAllRecordingsMetadata, getRecording, deleteRecording, RecordingMetadata } from '../utils/storageManager';
@@ -16,6 +17,7 @@ export const RecentRecordings: React.FC<RecentRecordingsProps> = ({ onSelectReco
   const [recordings, setRecordings] = useState<Recording[]>([]);
   const [loading, setLoading] = useState(true);
   const [fileSizes, setFileSizes] = useState<{ [id: string]: number }>({});
+  const [isDownloadingAll, setIsDownloadingAll] = useState(false);
 
   useEffect(() => {
     // Only load recordings when component is actually mounted and visible
@@ -168,6 +170,74 @@ export const RecentRecordings: React.FC<RecentRecordingsProps> = ({ onSelectReco
     }
   };
 
+  const handleDownloadAll = async () => {
+    if (recordings.length === 0 || isDownloadingAll) return;
+
+    setIsDownloadingAll(true);
+    try {
+      const zip = new JSZip();
+
+      // Get current format preferences
+      const result = await chrome.storage.local.get(['preferences']);
+      const format = result.preferences?.format || 'webm';
+      const sampleRate = result.preferences?.sampleRate ? parseInt(result.preferences.sampleRate) : undefined;
+      const channelMode = result.preferences?.channelMode || undefined;
+      const targetChannels = channelMode === 'mono' ? 1 : channelMode === 'stereo' ? 2 : undefined;
+      const extension = getFileExtension(format);
+
+      // Track used filenames to handle duplicates
+      const usedFilenames = new Set<string>();
+
+      // Process each recording and add to zip
+      for (const recording of recordings) {
+        try {
+          const fullRecording = await getRecording(recording.id);
+          if (!fullRecording) continue;
+
+          // Convert ArrayBuffer to Blob
+          const originalBlob = new Blob([fullRecording.audioData], { type: 'audio/webm' });
+
+          // Convert audio to the target format
+          const convertedBlob = await convertAudioFormat(originalBlob, format, sampleRate, targetChannels);
+
+          // Get filename and sanitize to prevent subdirectories (remove / and \ characters)
+          const nameWithoutExt = recording.name.replace(/\.[^/.]+$/, '');
+          const sanitizedName = nameWithoutExt.replace(/[\/\\]/g, '_');
+
+          // Handle duplicate filenames by adding a counter
+          let filename = `${sanitizedName}.${extension}`;
+          let counter = 1;
+          while (usedFilenames.has(filename.toLowerCase())) {
+            filename = `${sanitizedName} (${counter}).${extension}`;
+            counter++;
+          }
+          usedFilenames.add(filename.toLowerCase());
+
+          // Add to zip
+          const arrayBuffer = await convertedBlob.arrayBuffer();
+          zip.file(filename, arrayBuffer);
+        } catch (error) {
+          console.error(`Error processing recording ${recording.name}:`, error);
+        }
+      }
+
+      // Generate zip file and download
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `chrome-recordings-${new Date().toISOString().split('T')[0]}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error downloading all recordings:', error);
+    } finally {
+      setIsDownloadingAll(false);
+    }
+  };
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleString(undefined, {
@@ -314,6 +384,27 @@ export const RecentRecordings: React.FC<RecentRecordingsProps> = ({ onSelectReco
           </div>
         ))}
       </div>
+      <button
+        className="download-all-button"
+        onClick={handleDownloadAll}
+        disabled={isDownloadingAll || recordings.length === 0}
+        title="Download all recordings"
+      >
+        {isDownloadingAll ? (
+          <>
+            <div className="download-spinner"></div>
+            Downloading...
+          </>
+        ) : (
+          <>
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M10 2a1 1 0 011 1v8.586l2.293-2.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 11.586V3a1 1 0 011-1z" />
+              <path d="M3 15a1 1 0 011 1h12a1 1 0 110 2H4a1 1 0 01-1-1z" />
+            </svg>
+            Download All ({recordings.length})
+          </>
+        )}
+      </button>
     </div>
   );
 };
